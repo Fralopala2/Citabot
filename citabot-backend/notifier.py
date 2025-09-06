@@ -1,21 +1,25 @@
-import requests
+import firebase_admin
+from firebase_admin import credentials, messaging
+
+# Inicializar Firebase con la cuenta de servicio
+cred = credentials.Certificate("firebase-service-account.json")
+firebase_admin.initialize_app(cred)
 
 def send_notification(message):
-    # Replace with your Firebase server key and device token
-    server_key = "YOUR_FIREBASE_SERVER_KEY"
-    device_token = "YOUR_DEVICE_TOKEN"
+    # Token del dispositivo (puedes cargarlo desde .env si prefieres)
+    device_token = "TU_DEVICE_TOKEN_AQUI"
 
-    headers = {
-        "Authorization": f"key={server_key}",
-        "Content-Type": "application/json"
-    }
+    # Crear el mensaje
+    notification = messaging.Message(
+        notification=messaging.Notification(
+            title="Cita Previa",
+            body=message
+        ),
+        token=device_token
+    )
 
-    payload = {
-        "to": device_token,
-        "notification": {
-            "title": "Cita Previa",
-            "body": message
-        }
-    }
-
-    requests.post("https://fcm.googleapis.com/fcm/send", headers=headers, json=payload)
+    try:
+        response = messaging.send(notification)
+        print(f"Notification sent successfully: {response}")
+    except Exception as e:
+        print(f"Error sending notification: {e}")
