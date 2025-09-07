@@ -1,3 +1,6 @@
+<p align="center">
+  <img width="300" height="300" alt="citabot" src="https://github.com/user-attachments/assets/174c87ad-1ee3-455e-871a-54fb968bdf37" />
+</p>
 
 
 # Citabot
