@@ -1,3 +1,40 @@
+# Flutter/Dart
+.dart_tool/
+.packages
+pubspec.lock
+
+# Android Studio/Gradle
+.gradle/
+local.properties
+*.iml
+*.hprof
+*.DS_Store
+
+# Flutter build outputs
+citabot_app/build/
+citabot_app/.dart_tool/
+citabot_app/.packages
+citabot_app/pubspec.lock
+citabot_app/android/.gradle/
+citabot_app/android/local.properties
+citabot_app/android/app/*.iml
+citabot_app/android/app/build/
+citabot_app/ios/Pods/
+citabot_app/ios/Runner.xcworkspace/
+citabot_app/ios/Runner.xcodeproj/
+citabot_app/ios/build/
+citabot_app/macos/Pods/
+citabot_app/macos/build/
+citabot_app/web/build/
+citabot_app/linux/build/
+citabot_app/windows/build/
+
+# Android Studio project files
+*.iml
+.idea/
+
+# VSCode project files
+.vscode/
 # Firebase/Google confidential files
 citabot_app/android/app/google-services.json
 citabot-backend/firebase-service-account.json
