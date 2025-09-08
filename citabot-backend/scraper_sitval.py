@@ -13,7 +13,7 @@ class SitValScraper:
     AJAX_URL = f"{BASE_URL}/ajax/ajaxmodules.php"
     
     # Código temporal para pruebas
-    INSTANCE_CODE_TEMPORAL = "2g8mkjxs7t6sk5gawgri5x1u2nryqcxb"
+    INSTANCE_CODE_TEMPORAL = "a6n9q78qiikbenv3n6pcdx5sf6jxhihn"
     
     def __init__(self):
         self.session = requests.Session()
@@ -34,43 +34,91 @@ class SitValScraper:
         })
     
     def _make_request(self, module: str, payload: Dict) -> Dict[str, Any]:
-        """Realiza petición AJAX con manejo de errores"""
+        """Realiza petición AJAX con manejo de errores y debug mejorado"""
         try:
             response = self.session.post(
                 f"{self.AJAX_URL}?module={module}", 
                 data=payload, 
                 timeout=10
             )
+            print(f"DEBUG: Respuesta cruda de {module}: {response.text}")
+            print(f"DEBUG: Status code: {response.status_code}")
+            print(f"DEBUG: Headers: {response.headers}")
+            # Guardar respuesta cruda en archivo para inspección manual
+            with open(f"debug_{module}_response.bin", "wb") as f:
+                f.write(response.content)
+            # Si la respuesta está comprimida con Brotli, intentar descomprimir
+            if response.headers.get('Content-Encoding') == 'br':
+                try:
+                    import brotli
+                    decompressed = brotli.decompress(response.content)
+                    with open(f"debug_{module}_response.txt", "w", encoding="utf-8") as f:
+                        f.write(decompressed.decode("utf-8", errors="replace"))
+                    print(f"DEBUG: Respuesta Brotli descomprimida guardada en debug_{module}_response.txt")
+                except Exception as e:
+                    print(f"Error descomprimiendo Brotli: {e}")
             response.raise_for_status()
             return response.json()
         except requests.RequestException as e:
             print(f"Error en petición {module}: {e}")
             return {}
-        except json.JSONDecodeError as e:
+        except Exception as e:
+            print("DEBUG: Entrando en except de _make_request")
             print(f"Error decodificando JSON en {module}: {e}")
+            try:
+                print(f"Respuesta recibida (raw): {response.text}")
+            except Exception:
+                print("No se pudo obtener el texto de la respuesta.")
             return {}
+    def login_by_cookie(self) -> Dict[str, Any]:
+        """Realiza la petición login-by-cookie para inicializar la sesión (store=1, session vacío)"""
+        print(f"DEBUG: Realizando login-by-cookie con store=1, session=''")
+        return self._make_request('login-by-cookie', {
+            "store": "1",
+            "session": ""
+        })
     
-    def get_instance_code_robust(self) -> str:
-        """Obtiene instanceCode usando múltiples métodos"""
+    def get_instance_code_robust(self, store_id: str = "23") -> str:
+        """Obtiene instanceCode dinámico siguiendo el flujo real de la web"""
         print("=== Extrayendo instanceCode dinámico ===")
-        
-        # Método 1: Usar temporal si está definido
-        if self.INSTANCE_CODE_TEMPORAL:
-            print(f"Usando instanceCode temporal: {self.INSTANCE_CODE_TEMPORAL}")
-            return self.INSTANCE_CODE_TEMPORAL
-        
-        # Método 2: Scraping HTML
+
+        # Paso 1: login-by-cookie (siempre store=1, session='')
+        self.login_by_cookie()
+
+        # Paso 2: startUp y groupStartup con el store real
+        startup_data = self._make_request('startUp', {
+            'store': store_id,
+            'itineraryPlace': '0',
+            'instanceCode': ''
+        })
+
+        group_data = self._make_request('groupStartup', {
+            'store': store_id,
+            'owner': '1',
+            'instanceCode': '',
+            'group': '4'
+        })
+
+        # Buscar en cookies
+        for cookie in self.session.cookies:
+            if len(cookie.value) >= 25 and re.match(r'^[a-zA-Z0-9]+$', cookie.value):
+                print(f"✓ InstanceCode obtenido de cookie: {cookie.value}")
+                return cookie.value
+
+        # Buscar en respuesta JSON
+        instance_code = self._find_instance_code_recursive(startup_data)
+        if not instance_code:
+            instance_code = self._find_instance_code_recursive(group_data)
+        if instance_code:
+            print(f"✓ InstanceCode obtenido de respuesta JSON: {instance_code}")
+            return instance_code
+
+        # Fallback: Scraping HTML
         instance_code = self._get_instance_from_html()
         if instance_code:
             print(f"✓ InstanceCode obtenido por HTML: {instance_code}")
             return instance_code
-        
-        # Método 3: Cookies y headers
-        instance_code = self._get_instance_from_session()
-        if instance_code:
-            print(f"✓ InstanceCode obtenido de sesión: {instance_code}")
-            return instance_code
-        
+
         print("⚠ No se pudo obtener instanceCode válido")
         return ""
     
@@ -201,17 +249,15 @@ class SitValScraper:
     
     def extract_stations(self, group_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Extrae información de estaciones del response de groupStartup"""
+        print(f"DEBUG: INICIO extract_stations con group_data: {group_data}")
         estaciones = []
-        
         if not group_data or 'groups' not in group_data:
+            print("DEBUG: group_data vacío o sin 'groups'")
             return estaciones
-            
         for prov_data in group_data['groups'].values():
             provincia = prov_data.get('name', '')
-            
             for level2_data in prov_data.get('level2', {}).values():
                 tipo = level2_data.get('name', '')
-                
                 for store_data in level2_data.get('stores', {}).values():
                     estacion = {
                         'provincia': provincia,
@@ -223,7 +269,7 @@ class SitValScraper:
                         'instanceCode': store_data.get('instanceCode', '')
                     }
                     estaciones.append(estacion)
-                    
+        print(f"DEBUG: estaciones encontradas: {estaciones}")
         return estaciones
     
     def get_next_available_slots(self, store: str, service: str, instance_code: str, 
@@ -288,31 +334,37 @@ class SitValScraper:
     def _filter_valid_days(self, open_days: Any) -> List[str]:
         """Filtra días válidos de la respuesta de disponibilidad"""
         valid_days = []
-        
         if isinstance(open_days, dict):
-            valid_days = [v for v in open_days.values() 
-                         if isinstance(v, str) and not v.startswith('n')]
+            # Claves donde el valor es "1" (disponible)
+            valid_days = [k for k, v in open_days.items() if v == "1"]
         elif isinstance(open_days, list):
-            valid_days = [v for v in open_days 
-                         if isinstance(v, str) and not v.startswith('n')]
-                         
+            valid_days = [v for v in open_days if isinstance(v, str) and not v.startswith('n')]
         return valid_days
     
     def _extract_valid_hours(self, day_slots: Any) -> List[str]:
-        """Extrae horarios válidos de los slots del día"""
+        """Extrae horarios válidos en formato HH:MM de los slots del día"""
         valid_hours = []
-        
+        def extract_hour(hora_str):
+            # Extrae HH:MM de 'YYYY-MM-DD HH:MM:SS'
+            if isinstance(hora_str, str) and len(hora_str) >= 16:
+                return hora_str[11:16]
+            return None
         if isinstance(day_slots, dict):
             for slot in day_slots.values():
                 if isinstance(slot, list):
                     for hora in slot:
-                        if isinstance(hora, str) and not hora.startswith('n'):
-                            valid_hours.append(hora)
+                        h = extract_hour(hora)
+                        if h:
+                            valid_hours.append(h)
+                elif isinstance(slot, str):
+                    h = extract_hour(slot)
+                    if h:
+                        valid_hours.append(h)
         elif isinstance(day_slots, list):
             for hora in day_slots:
-                if isinstance(hora, str) and not hora.startswith('n'):
-                    valid_hours.append(hora)
-                    
+                h = extract_hour(hora)
+                if h:
+                    valid_hours.append(h)
         return valid_hours
 
 
@@ -334,12 +386,10 @@ def main():
     
     # Buscar citas disponibles para una estación específica
     if estaciones:
-        test_store = "21"
-        test_service = "323"
-        
+        test_store = "23"
+        test_service = "355"
         print(f"\nBuscando citas para store={test_store}, service={test_service}:")
         slots = scraper.get_next_available_slots(test_store, test_service, instance_code, 5)
-        
         for slot in slots:
             print(f"- {slot['fecha']} {slot['hora']} - €{slot['precio']}")
 
