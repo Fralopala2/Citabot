@@ -5,22 +5,20 @@ import datetime
 from typing import Dict, List, Optional, Any
 from bs4 import BeautifulSoup
 
-
 class SitValScraper:
-    """Scraper optimizado para el sistema de citas ITV SitVal"""
+    # Scraper para el sistema de citas ITV SitVal
     
     BASE_URL = "https://citaitvsitval.com"
     AJAX_URL = f"{BASE_URL}/ajax/ajaxmodules.php"
     
-    # Código temporal para pruebas
-    INSTANCE_CODE_TEMPORAL = "a6n9q78qiikbenv3n6pcdx5sf6jxhihn"
+    # INSTANCE_CODE_TEMPORAL solo para pruebas, eliminar si no se usa
     
     def __init__(self):
         self.session = requests.Session()
         self._setup_headers()
         
     def _setup_headers(self) -> None:
-        """Configura headers para simular navegador real"""
+    # Configura headers para simular navegador
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'application/json, text/javascript, */*; q=0.01',
@@ -34,7 +32,7 @@ class SitValScraper:
         })
     
     def _make_request(self, module: str, payload: Dict) -> Dict[str, Any]:
-        """Realiza petición AJAX con manejo de errores y debug mejorado"""
+    # Realiza petición AJAX con manejo de errores
         try:
             response = self.session.post(
                 f"{self.AJAX_URL}?module={module}", 
@@ -71,7 +69,7 @@ class SitValScraper:
                 print("No se pudo obtener el texto de la respuesta.")
             return {}
     def login_by_cookie(self) -> Dict[str, Any]:
-        """Realiza la petición login-by-cookie para inicializar la sesión (store=1, session vacío)"""
+    # Realiza la petición login-by-cookie para inicializar la sesión
         print(f"DEBUG: Realizando login-by-cookie con store=1, session=''")
         return self._make_request('login-by-cookie', {
             "store": "1",
@@ -79,7 +77,7 @@ class SitValScraper:
         })
     
     def get_instance_code_robust(self, store_id: str = "23") -> str:
-        """Obtiene instanceCode dinámico siguiendo el flujo real de la web"""
+    # Obtiene instanceCode dinámico siguiendo el flujo real de la web
         print("=== Extrayendo instanceCode dinámico ===")
 
         # Paso 1: login-by-cookie (siempre store=1, session='')
@@ -123,7 +121,7 @@ class SitValScraper:
         return ""
     
     def _get_instance_from_html(self) -> Optional[str]:
-        """Extrae instanceCode del HTML de la página principal"""
+    # Extrae instanceCode del HTML de la página principal
         try:
             response = self.session.get(self.BASE_URL, timeout=10)
             response.raise_for_status()
@@ -159,7 +157,7 @@ class SitValScraper:
         return None
     
     def _get_instance_from_session(self) -> Optional[str]:
-        """Obtiene instanceCode desde cookies o respuesta de startup"""
+    # Obtiene instanceCode desde cookies o respuesta de startup
         try:
             # Realizar petición inicial
             self.session.get(self.BASE_URL, timeout=10)
@@ -195,7 +193,7 @@ class SitValScraper:
         return None
     
     def _find_instance_code_recursive(self, obj: Any) -> Optional[str]:
-        """Busca recursivamente instanceCode en estructura JSON"""
+    # Busca recursivamente instanceCode en estructura JSON
         if isinstance(obj, dict):
             for key, value in obj.items():
                 if key == 'instanceCode' and value and len(str(value)) >= 25:
@@ -212,7 +210,7 @@ class SitValScraper:
         return None
     
     def get_group_startup(self, instance_code: str, store_id: str = "1") -> Dict[str, Any]:
-        """Obtiene información de provincias y estaciones"""
+    # Obtiene información de provincias y estaciones
         return self._make_request('groupStartup', {
             "store": str(store_id),
             "owner": "1",
@@ -222,7 +220,7 @@ class SitValScraper:
     
     def get_service_month_data(self, store: str, service: str, instance_code: str, 
                               date: str = None) -> Dict[str, Any]:
-        """Obtiene disponibilidad mensual para una estación y servicio"""
+    # Obtiene disponibilidad mensual para una estación y servicio
         if date is None:
             date = datetime.date.today().strftime('%Y-%m-%d')
             
@@ -237,7 +235,7 @@ class SitValScraper:
     
     def get_service_day_data(self, store: str, service: str, instance_code: str, 
                             dia: str) -> Dict[str, Any]:
-        """Obtiene horarios disponibles para un día específico"""
+    # Obtiene horarios disponibles para un día específico
         return self._make_request('serviceDayData', {
             "store": str(store),
             "service": str(service),
@@ -248,7 +246,7 @@ class SitValScraper:
         })
     
     def extract_stations(self, group_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Extrae información de estaciones del response de groupStartup"""
+    # Extrae información de estaciones del response de groupStartup
         print(f"DEBUG: INICIO extract_stations con group_data: {group_data}")
         estaciones = []
         if not group_data or 'groups' not in group_data:
@@ -274,7 +272,7 @@ class SitValScraper:
     
     def get_next_available_slots(self, store: str, service: str, instance_code: str, 
                                max_slots: int = 10) -> List[Dict[str, Any]]:
-        """Obtiene las próximas citas disponibles"""
+    # Obtiene las próximas citas disponibles
         print(f"Buscando citas para store={store}, service={service}")
         
         # Usar instanceCode robusto si no se proporciona uno válido
@@ -332,7 +330,7 @@ class SitValScraper:
         return slots
     
     def _filter_valid_days(self, open_days: Any) -> List[str]:
-        """Filtra días válidos de la respuesta de disponibilidad"""
+    # Filtra días válidos de la respuesta de disponibilidad
         valid_days = []
         if isinstance(open_days, dict):
             # Claves donde el valor es "1" (disponible)
@@ -342,7 +340,7 @@ class SitValScraper:
         return valid_days
     
     def _extract_valid_hours(self, day_slots: Any) -> List[str]:
-        """Extrae horarios válidos en formato HH:MM de los slots del día"""
+    # Extrae horarios válidos en formato HH:MM de los slots del día
         valid_hours = []
         def extract_hour(hora_str):
             # Extrae HH:MM de 'YYYY-MM-DD HH:MM:SS'
@@ -368,31 +366,3 @@ class SitValScraper:
         return valid_hours
 
 
-def main():
-    """Función de prueba"""
-    scraper = SitValScraper()
-    
-    # Obtener instanceCode
-    instance_code = scraper.get_instance_code_robust()
-    print(f"InstanceCode obtenido: {instance_code}")
-    
-    # Obtener estaciones
-    group_data = scraper.get_group_startup(instance_code)
-    estaciones = scraper.extract_stations(group_data)
-    
-    print(f"\nEncontradas {len(estaciones)} estaciones:")
-    for estacion in estaciones[:5]:  # Mostrar solo las primeras 5
-        print(f"- {estacion['nombre']} (ID: {estacion['store_id']})")
-    
-    # Buscar citas disponibles para una estación específica
-    if estaciones:
-        test_store = "23"
-        test_service = "355"
-        print(f"\nBuscando citas para store={test_store}, service={test_service}:")
-        slots = scraper.get_next_available_slots(test_store, test_service, instance_code, 5)
-        for slot in slots:
-            print(f"- {slot['fecha']} {slot['hora']} - €{slot['precio']}")
-
-
-if __name__ == "__main__":
-    main()
