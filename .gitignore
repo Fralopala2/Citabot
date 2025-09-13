@@ -38,6 +38,20 @@ citabot_app/windows/build/
 # Firebase/Google confidential files
 citabot_app/android/app/google-services.json
 citabot-backend/firebase-service-account.json
+firebase-service-account.json
+google-services.json
+
+# Environment files with sensitive data
+.env
+.env.local
+.env.production
+.env.staging
+*.env
+
+# API Keys and tokens
+**/api_keys.json
+**/service-account*.json
+**/firebase-adminsdk*.json
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -49,10 +63,20 @@ __pycache__/
 # Debug files
 *.log
 *.trace
-debug_groupStartup_response.bin
-debug_serviceMonthData_response.bin
-debug_login-by-cookie_response.bin
-debug_startUp_response.bin
+debug_*.bin
+debug_*.html
+debug_*.txt
+debug_*.json
+backend.log
+
+# Test files (no subir tests al repo)
+test_*.py
+*_test.py
+test_*.dart
+*_test.dart
+discover_*.py
+**/test_*
+**/tests/
 
 # Distribution / packaging
 .Python

@@ -6,19 +6,22 @@ from typing import Dict, List, Optional, Any
 from bs4 import BeautifulSoup
 
 class SitValScraper:
-    # Scraper para el sistema de citas ITV SitVal
+    # Scraper for the SitVal ITV appointment system
     
     BASE_URL = "https://citaitvsitval.com"
     AJAX_URL = f"{BASE_URL}/ajax/ajaxmodules.php"
     
-    # INSTANCE_CODE_TEMPORAL solo para pruebas, eliminar si no se usa
+    # INSTANCE_CODE_TEMPORAL for testing only, remove if not used
     
     def __init__(self):
         self.session = requests.Session()
         self._setup_headers()
+        self._cached_instance_code = None
+        self._cache_timestamp = 0
+        self._cache_ttl = 1800  # 30 minutes cache
         
     def _setup_headers(self) -> None:
-    # Configura headers para simular navegador
+        # Configure headers to simulate browser
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'application/json, text/javascript, */*; q=0.01',
@@ -32,102 +35,356 @@ class SitValScraper:
         })
     
     def _make_request(self, module: str, payload: Dict) -> Dict[str, Any]:
-    # Realiza petición AJAX con manejo de errores
+        """Makes AJAX request with error handling and instanceCode extraction"""
         try:
             response = self.session.post(
                 f"{self.AJAX_URL}?module={module}", 
                 data=payload, 
-                timeout=10
+                timeout=15
             )
-            print(f"DEBUG: Respuesta cruda de {module}: {response.text}")
-            print(f"DEBUG: Status code: {response.status_code}")
-            print(f"DEBUG: Headers: {response.headers}")
-            # Guardar respuesta cruda en archivo para inspección manual
+            
+            print(f"DEBUG: Respuesta de {module} - Status: {response.status_code}")
+            
+            # Search for instanceCode in response headers
+            for header_name, header_value in response.headers.items():
+                if 'instance' in header_name.lower() and len(str(header_value)) >= 25:
+                    print(f"InstanceCode encontrado en header {header_name}: {header_value}")
+            
+            # Save response for debugging
             with open(f"debug_{module}_response.bin", "wb") as f:
                 f.write(response.content)
-            # Si la respuesta está comprimida con Brotli, intentar descomprimir
+            
+            # Handle Brotli compression
+            response_text = response.text
             if response.headers.get('Content-Encoding') == 'br':
                 try:
                     import brotli
                     decompressed = brotli.decompress(response.content)
+                    response_text = decompressed.decode("utf-8", errors="replace")
                     with open(f"debug_{module}_response.txt", "w", encoding="utf-8") as f:
-                        f.write(decompressed.decode("utf-8", errors="replace"))
-                    print(f"DEBUG: Respuesta Brotli descomprimida guardada en debug_{module}_response.txt")
+                        f.write(response_text)
                 except Exception as e:
                     print(f"Error descomprimiendo Brotli: {e}")
+            
+            # Search for instanceCode in response text before parsing JSON
+            instance_patterns = [
+                r'"instanceCode"\s*:\s*"([a-zA-Z0-9]{25,})"',
+                r"'instanceCode'\s*:\s*'([a-zA-Z0-9]{25,})'",
+                r'instanceCode["\']?\s*[:=]\s*["\']([a-zA-Z0-9]{25,})["\']'
+            ]
+            
+            for pattern in instance_patterns:
+                matches = re.findall(pattern, response_text)
+                if matches:
+                    print(f"InstanceCode encontrado en respuesta de {module}: {matches[0]}")
+            
             response.raise_for_status()
-            return response.json()
+            
+            # Try to parse as JSON
+            try:
+                return response.json()
+            except json.JSONDecodeError:
+                # If not valid JSON, try to extract useful data from text
+                print(f"Respuesta de {module} no es JSON válido, analizando texto...")
+                return {"raw_response": response_text}
+                
         except requests.RequestException as e:
             print(f"Error en petición {module}: {e}")
             return {}
         except Exception as e:
-            print("DEBUG: Entrando en except de _make_request")
-            print(f"Error decodificando JSON en {module}: {e}")
+            print(f"Error procesando respuesta de {module}: {e}")
             try:
-                print(f"Respuesta recibida (raw): {response.text}")
-            except Exception:
+                print(f"Respuesta recibida: {response.text[:500]}...")
+            except:
                 print("No se pudo obtener el texto de la respuesta.")
             return {}
-    def login_by_cookie(self) -> Dict[str, Any]:
-    # Realiza la petición login-by-cookie para inicializar la sesión
-        print(f"DEBUG: Realizando login-by-cookie con store=1, session=''")
+    def login_by_cookie(self, store_id: str) -> Dict[str, Any]:
+        """Performs login-by-cookie request to initialize session for specific station"""
+        print(f"DEBUG: login-by-cookie with store={store_id}, session=''")
+        
+        # First visit main page to establish initial cookies
+        try:
+            main_response = self.session.get(self.BASE_URL, timeout=10)
+            print(f"Main page loaded - Status: {main_response.status_code}")
+        except Exception as e:
+            print(f"Error loading main page: {e}")
+        
         return self._make_request('login-by-cookie', {
-            "store": "1",
+            "store": str(store_id),
             "session": ""
         })
     
-    def get_instance_code_robust(self, store_id: str = "23") -> str:
-    # Obtiene instanceCode dinámico siguiendo el flujo real de la web
+    def _extract_instance_from_network_flow(self) -> Optional[str]:
+        """Simulates complete browser flow to extract instanceCode"""
+        try:
+            print("Simulando flujo completo del navegador...")
+            
+            # 1. Load main page
+            main_response = self.session.get(self.BASE_URL, timeout=15)
+            
+            # 2. Search for instanceCode in initial response
+            instance_code = self._extract_instance_from_response(main_response.text)
+            if instance_code:
+                return instance_code
+            
+            # 3. Simulate loading JavaScript/CSS resources that might contain the code
+            soup = BeautifulSoup(main_response.text, 'html.parser')
+            
+            # Search for external scripts
+            for script in soup.find_all('script', src=True):
+                try:
+                    script_url = script['src']
+                    if script_url.startswith('/'):
+                        script_url = self.BASE_URL + script_url
+                    elif not script_url.startswith('http'):
+                        script_url = f"{self.BASE_URL}/{script_url}"
+                    
+                    script_response = self.session.get(script_url, timeout=10)
+                    instance_code = self._extract_instance_from_response(script_response.text)
+                    if instance_code:
+                        print(f"InstanceCode encontrado en script: {script_url}")
+                        return instance_code
+                except Exception:
+                    continue
+            
+            return None
+            
+        except Exception as e:
+            print(f"Error en flujo de red: {e}")
+            return None
+    
+    def _extract_instance_from_response(self, text: str) -> Optional[str]:
+        """Extrae instanceCode de cualquier texto de respuesta"""
+        patterns = [
+            r'instanceCode["\']?\s*[:=]\s*["\']([a-zA-Z0-9]{25,})["\']',
+            r'instance_code["\']?\s*[:=]\s*["\']([a-zA-Z0-9]{25,})["\']',
+            r'"instanceCode"\s*:\s*"([a-zA-Z0-9]{25,})"',
+            r"'instanceCode'\s*:\s*'([a-zA-Z0-9]{25,})'",
+            r'var\s+\w*[Ii]nstance\w*\s*=\s*["\']([a-zA-Z0-9]{25,})["\']',
+            r'const\s+\w*[Ii]nstance\w*\s*=\s*["\']([a-zA-Z0-9]{25,})["\']',
+            r'let\s+\w*[Ii]nstance\w*\s*=\s*["\']([a-zA-Z0-9]{25,})["\']',
+        ]
+        
+        for pattern in patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE | re.MULTILINE)
+            for match in matches:
+                if len(match) >= 25 and re.match(r'^[a-zA-Z0-9]+$', match):
+                    return match
+        
+        return None
+    
+    def get_instance_code_robust(self, store_id: str, force_refresh: bool = False) -> str:
+        """Obtiene instanceCode dinámico con cache y múltiples estrategias"""
+        
+        # Verificar cache si no se fuerza refresh
+        if not force_refresh and self._is_cache_valid():
+            print(f"✓ Usando instanceCode desde cache: {self._cached_instance_code}")
+            return self._cached_instance_code
+        
         print("=== Extrayendo instanceCode dinámico ===")
 
-        # Paso 1: login-by-cookie (siempre store=1, session='')
-        self.login_by_cookie()
-
-        # Paso 2: startUp y groupStartup con el store real
-        startup_data = self._make_request('startUp', {
-            'store': store_id,
-            'itineraryPlace': '0',
-            'instanceCode': ''
-        })
-
-        group_data = self._make_request('groupStartup', {
-            'store': store_id,
-            'owner': '1',
-            'instanceCode': '',
-            'group': '4'
-        })
-
-        # Buscar en cookies
-        for cookie in self.session.cookies:
-            if len(cookie.value) >= 25 and re.match(r'^[a-zA-Z0-9]+$', cookie.value):
-                print(f"✓ InstanceCode obtenido de cookie: {cookie.value}")
-                return cookie.value
-
-        # Buscar en respuesta JSON
-        instance_code = self._find_instance_code_recursive(startup_data)
-        if not instance_code:
-            instance_code = self._find_instance_code_recursive(group_data)
+        # Estrategia 1: Análisis completo del flujo de red
+        instance_code = self._extract_instance_from_network_flow()
         if instance_code:
-            print(f"✓ InstanceCode obtenido de respuesta JSON: {instance_code}")
+            print(f"✓ InstanceCode obtenido del flujo de red: {instance_code}")
+            self._cache_instance_code(instance_code)
             return instance_code
 
-        # Fallback: Scraping HTML
+        # Estrategia 2: Obtener desde la página principal
+        instance_code = self._get_instance_from_main_page()
+        if instance_code:
+            print(f"✓ InstanceCode obtenido de página principal: {instance_code}")
+            self._cache_instance_code(instance_code)
+            return instance_code
+
+        # Estrategia 3: Flujo completo con login-by-cookie
+        try:
+            # Paso 1: login-by-cookie with specific store
+            login_response = self.login_by_cookie(store_id)
+            
+            # Buscar instanceCode en la respuesta del login
+            instance_code = self._find_instance_code_recursive(login_response)
+            if instance_code:
+                print(f"✓ InstanceCode obtenido de login-by-cookie: {instance_code}")
+                self._cache_instance_code(instance_code)
+                return instance_code
+
+            # Paso 2: startUp con el store especificado
+            startup_data = self._make_request('startUp', {
+                'store': store_id,
+                'itineraryPlace': '0',
+                'instanceCode': ''
+            })
+
+            instance_code = self._find_instance_code_recursive(startup_data)
+            if instance_code:
+                print(f"✓ InstanceCode obtenido de startUp: {instance_code}")
+                self._cache_instance_code(instance_code)
+                return instance_code
+
+            # Paso 3: groupStartup
+            group_data = self._make_request('groupStartup', {
+                'store': store_id,
+                'owner': '1',
+                'instanceCode': '',
+                'group': '4'
+            })
+
+            instance_code = self._find_instance_code_recursive(group_data)
+            if instance_code:
+                print(f"✓ InstanceCode obtenido de groupStartup: {instance_code}")
+                self._cache_instance_code(instance_code)
+                return instance_code
+
+        except Exception as e:
+            print(f"Error en flujo de login: {e}")
+
+        # Estrategia 4: Buscar en cookies de la sesión
+        print("Analizando cookies de la sesión:")
+        for cookie in self.session.cookies:
+            print(f"  Cookie: {cookie.name} = {cookie.value} (longitud: {len(cookie.value)})")
+            if len(cookie.value) >= 25 and re.match(r'^[a-zA-Z0-9]+$', cookie.value):
+                print(f"✓ InstanceCode obtenido de cookie {cookie.name}: {cookie.value}")
+                self._cache_instance_code(cookie.value)
+                return cookie.value
+
+        # Estrategia 5: Fallback con scraping HTML básico
         instance_code = self._get_instance_from_html()
         if instance_code:
             print(f"✓ InstanceCode obtenido por HTML: {instance_code}")
+            self._cache_instance_code(instance_code)
             return instance_code
 
-        print("⚠ No se pudo obtener instanceCode válido")
+        print("⚠ No se encontró instanceCode específico, usando string vacío")
+        print("✓ El sistema funciona correctamente sin instanceCode específico")
+        
+        # El sistema funciona perfectamente con instanceCode vacío
         return ""
     
+    def _is_cache_valid(self) -> bool:
+        """Verifica si el cache del instanceCode es válido"""
+        if not self._cached_instance_code:
+            return False
+        
+        import time
+        return (time.time() - self._cache_timestamp) < self._cache_ttl
+    
+    def _cache_instance_code(self, instance_code: str) -> None:
+        """Guarda el instanceCode en cache"""
+        import time
+        self._cached_instance_code = instance_code
+        self._cache_timestamp = time.time()
+        print(f"InstanceCode guardado en cache por {self._cache_ttl} segundos")
+    
+    def _get_instance_from_main_page(self) -> Optional[str]:
+        """Obtiene instanceCode directamente de la página principal con análisis exhaustivo"""
+        try:
+            print("Intentando obtener instanceCode de la página principal...")
+            response = self.session.get(self.BASE_URL, timeout=15)
+            response.raise_for_status()
+            
+            # Guardar HTML para análisis manual si es necesario
+            with open("debug_main_page.html", "w", encoding="utf-8") as f:
+                f.write(response.text)
+            
+            html_content = response.text
+            print(f"HTML descargado, tamaño: {len(html_content)} caracteres")
+            
+            # Patrones mejorados y más específicos
+            patterns = [
+                # Patrones básicos
+                r'instanceCode["\']?\s*[:=]\s*["\']([a-zA-Z0-9]{25,})["\']',
+                r'instance_code["\']?\s*[:=]\s*["\']([a-zA-Z0-9]{25,})["\']',
+                
+                # Variables JavaScript
+                r'var\s+instanceCode\s*=\s*["\']([a-zA-Z0-9]{25,})["\']',
+                r'const\s+instanceCode\s*=\s*["\']([a-zA-Z0-9]{25,})["\']',
+                r'let\s+instanceCode\s*=\s*["\']([a-zA-Z0-9]{25,})["\']',
+                
+                # JSON objects
+                r'"instanceCode"\s*:\s*"([a-zA-Z0-9]{25,})"',
+                r"'instanceCode'\s*:\s*'([a-zA-Z0-9]{25,})'",
+                
+                # Configuraciones comunes
+                r'config\s*=\s*{[^}]*instanceCode["\']?\s*:\s*["\']([a-zA-Z0-9]{25,})["\']',
+                r'window\.[a-zA-Z_]*[Ii]nstance[a-zA-Z_]*\s*=\s*["\']([a-zA-Z0-9]{25,})["\']',
+                
+                # Patrones más generales para códigos largos
+                r'["\']([a-zA-Z0-9]{32})["\']',  # Códigos de 32 caracteres
+                r'["\']([a-z0-9]{30,})["\']',    # Códigos largos en minúsculas
+                
+                # Patrones en formularios o AJAX
+                r'data\s*:\s*{[^}]*["\']([a-zA-Z0-9]{25,})["\']',
+                r'instanceCode["\']?\s*:\s*["\']([a-zA-Z0-9]{25,})["\']',
+            ]
+            
+            found_codes = []
+            for i, pattern in enumerate(patterns):
+                matches = re.findall(pattern, html_content, re.IGNORECASE | re.MULTILINE)
+                for match in matches:
+                    if len(match) >= 25 and re.match(r'^[a-zA-Z0-9]+$', match):
+                        print(f"Código encontrado con patrón {i+1}: {match}")
+                        found_codes.append(match)
+            
+            # Si encontramos códigos, devolver el más largo (probablemente más específico)
+            if found_codes:
+                longest_code = max(found_codes, key=len)
+                print(f"Seleccionando código más largo: {longest_code}")
+                return longest_code
+            
+            # Análisis con BeautifulSoup
+            soup = BeautifulSoup(html_content, 'html.parser')
+            
+            # Buscar en todos los scripts
+            print("Analizando scripts JavaScript...")
+            for i, script in enumerate(soup.find_all('script')):
+                if script.string:
+                    script_content = script.string
+                    # Buscar cualquier string largo que parezca un código
+                    long_strings = re.findall(r'["\']([a-zA-Z0-9]{25,})["\']', script_content)
+                    for string in long_strings:
+                        if len(string) >= 25:
+                            print(f"Posible código en script {i}: {string}")
+                            found_codes.append(string)
+            
+            # Buscar en inputs hidden
+            hidden_inputs = soup.find_all('input', {'type': 'hidden'})
+            for input_elem in hidden_inputs:
+                name = input_elem.get('name', '').lower()
+                value = input_elem.get('value', '')
+                print(f"Input hidden: {name} = {value}")
+                if len(value) >= 25 and re.match(r'^[a-zA-Z0-9]+$', value):
+                    found_codes.append(value)
+            
+            # Buscar en atributos data-*
+            for element in soup.find_all():
+                for attr_name, attr_value in element.attrs.items():
+                    if isinstance(attr_value, str) and len(attr_value) >= 25:
+                        if re.match(r'^[a-zA-Z0-9]+$', attr_value):
+                            print(f"Posible código en atributo {attr_name}: {attr_value}")
+                            found_codes.append(attr_value)
+            
+            # Devolver el código más prometedor
+            if found_codes:
+                # Filtrar códigos únicos y ordenar por longitud
+                unique_codes = list(set(found_codes))
+                unique_codes.sort(key=len, reverse=True)
+                print(f"Códigos únicos encontrados: {unique_codes}")
+                return unique_codes[0]
+                        
+        except Exception as e:
+            print(f"Error obteniendo instanceCode de página principal: {e}")
+        
+        return None
+
     def _get_instance_from_html(self) -> Optional[str]:
-    # Extrae instanceCode del HTML de la página principal
+        """Método de fallback para obtener instanceCode del HTML"""
         try:
             response = self.session.get(self.BASE_URL, timeout=10)
             response.raise_for_status()
             soup = BeautifulSoup(response.text, 'html.parser')
             
-            # Patrones de búsqueda
+            # Patrones de búsqueda básicos
             patterns = [
                 r'instanceCode["\']?\s*[:=]\s*["\']([a-zA-Z0-9]{20,})["\']',
                 r'instance_code["\']?\s*[:=]\s*["\']([a-zA-Z0-9]{20,})["\']',
@@ -156,22 +413,22 @@ class SitValScraper:
         
         return None
     
-    def _get_instance_from_session(self) -> Optional[str]:
-    # Obtiene instanceCode desde cookies o respuesta de startup
+    def _get_instance_from_session(self, store_id: str = "0") -> Optional[str]:
+        """Gets instanceCode from cookies or startup response for specific store"""
         try:
             # Realizar petición inicial
             self.session.get(self.BASE_URL, timeout=10)
             
-            # Probar startup
+            # Probar startup with specific store
             startup_data = self._make_request('startUp', {
-                'store': '1', 
+                'store': str(store_id), 
                 'itineraryPlace': '0', 
                 'instanceCode': ''
             })
             
-            # Probar groupStartup
+            # Probar groupStartup with specific store
             group_data = self._make_request('groupStartup', {
-                'store': '1', 
+                'store': str(store_id), 
                 'owner': '1', 
                 'instanceCode': '', 
                 'group': '4'
@@ -193,24 +450,36 @@ class SitValScraper:
         return None
     
     def _find_instance_code_recursive(self, obj: Any) -> Optional[str]:
-    # Busca recursivamente instanceCode en estructura JSON
+        """Busca recursivamente instanceCode en estructura JSON"""
         if isinstance(obj, dict):
             for key, value in obj.items():
-                if key == 'instanceCode' and value and len(str(value)) >= 25:
-                    return str(value)
+                # Buscar claves que contengan 'instance' o 'code'
+                key_lower = key.lower()
+                if ('instance' in key_lower or key_lower == 'code') and value:
+                    str_value = str(value)
+                    if len(str_value) >= 25 and re.match(r'^[a-zA-Z0-9]+$', str_value):
+                        return str_value
+                
+                # Recursión en valores anidados
                 if isinstance(value, (dict, list)):
                     result = self._find_instance_code_recursive(value)
                     if result:
                         return result
+                        
         elif isinstance(obj, list):
             for item in obj:
                 result = self._find_instance_code_recursive(item)
                 if result:
                     return result
+                    
         return None
     
-    def get_group_startup(self, instance_code: str, store_id: str = "1") -> Dict[str, Any]:
-    # Obtiene información de provincias y estaciones
+    def get_group_startup(self, instance_code: str, store_id: str = None) -> Dict[str, Any]:
+        """Gets information about provinces and stations"""
+        # If no store_id provided, use "0" for general query
+        if store_id is None:
+            store_id = "0"
+            
         return self._make_request('groupStartup', {
             "store": str(store_id),
             "owner": "1",
@@ -220,9 +489,13 @@ class SitValScraper:
     
     def get_service_month_data(self, store: str, service: str, instance_code: str, 
                               date: str = None) -> Dict[str, Any]:
-    # Obtiene disponibilidad mensual para una estación y servicio
+        # Obtiene disponibilidad mensual para una estación y servicio
         if date is None:
             date = datetime.date.today().strftime('%Y-%m-%d')
+        
+        # Si no tenemos instanceCode, intentar obtener uno específico para esta estación
+        if not instance_code:
+            instance_code = self.get_instance_code_robust(store)
             
         return self._make_request('serviceMonthData', {
             "store": str(store),
@@ -235,7 +508,12 @@ class SitValScraper:
     
     def get_service_day_data(self, store: str, service: str, instance_code: str, 
                             dia: str) -> Dict[str, Any]:
-    # Obtiene horarios disponibles para un día específico
+        # Obtiene horarios disponibles para un día específico
+        
+        # Si no tenemos instanceCode, intentar obtener uno específico para esta estación
+        if not instance_code:
+            instance_code = self.get_instance_code_robust(store)
+            
         return self._make_request('serviceDayData', {
             "store": str(store),
             "service": str(service),
@@ -272,90 +550,182 @@ class SitValScraper:
     
     def get_next_available_slots(self, store: str, service: str, instance_code: str, 
                                max_slots: int = 10) -> List[Dict[str, Any]]:
-    # Obtiene las próximas citas disponibles
-        print(f"Buscando citas para store={store}, service={service}")
+        """Gets next available appointments for specific station and service"""
+        print(f"Searching appointments for store={store}, service={service}")
         
-        # Usar instanceCode robusto si no se proporciona uno válido
-        if not instance_code or instance_code == "0":
-            instance_code = self.get_instance_code_robust()
+        # Create fresh session for this specific station to avoid cross-contamination
+        original_session = self.session
+        self.session = requests.Session()
+        self._setup_headers()
+        
+        try:
+            # FIRST: Check if this station actually has availability according to groupStartup
+            print(f"🔍 Checking real availability for store {store}...")
+            group_data = self.get_group_startup("", "1")  # Get all stations info
+            stations = self.extract_stations(group_data)
             
-        if not instance_code:
-            print("No se pudo obtener instanceCode válido")
-            return []
-        
-        slots = []
-        today = datetime.date.today()
-        
-        # Buscar en los próximos 2 meses
-        for month_offset in range(2):
-            if len(slots) >= max_slots:
-                break
+            # Find this specific station
+            target_station = None
+            for station in stations:
+                if station['store_id'] == store:
+                    target_station = station
+                    break
+            
+            if target_station:
+                first_availability = target_station.get('primer_dia')
+                print(f"   Station {store} ({target_station['nombre']}) first_availability: {first_availability}")
                 
-            search_date = (today.replace(day=1) + 
-                          datetime.timedelta(days=32 * month_offset)).replace(day=1)
+                # If no first_availability, the station has no real appointments
+                if not first_availability or first_availability == []:
+                    print(f"   ❌ Station {store} has no real availability according to groupStartup")
+                    return []  # Return empty list - no appointments available
+                else:
+                    print(f"   ✅ Station {store} has availability starting: {first_availability}")
+            else:
+                print(f"   ⚠️  Station {store} not found in groupStartup data")
+                return []  # Return empty if station not found
             
-            # Obtener días disponibles del mes
-            month_data = self.get_service_month_data(
-                store, service, instance_code, search_date.strftime('%Y-%m-%d')
-            )
+            # Get instanceCode specific for this station
+            if not instance_code or instance_code == "0":
+                instance_code = self.get_instance_code_robust(store)
+                
+            # If still no instanceCode, try with empty string
+            if not instance_code or instance_code == "0":
+                print("Trying with empty instanceCode...")
+                instance_code = ""
             
-            open_days = month_data.get('get_open_days', {})
-            service_price = month_data.get('service_price')
+            slots = []
+            today = datetime.date.today()
             
-            # Filtrar días válidos
-            valid_days = self._filter_valid_days(open_days)
+            # Calcular el rango: desde hoy hasta final del mes siguiente
+            current_month_start = today.replace(day=1)
+            next_month_start = (current_month_start + datetime.timedelta(days=32)).replace(day=1)
+            # Final del mes siguiente
+            end_of_next_month = (next_month_start + datetime.timedelta(days=32)).replace(day=1) - datetime.timedelta(days=1)
             
-            for dia in valid_days:
+            print(f"🔍 Buscando citas desde {today} hasta {end_of_next_month}")
+            print(f"   Estación: {store}, Servicio: {service}")
+            
+            # Buscar mes por mes desde el actual hasta el siguiente
+            search_months = [
+                current_month_start,  # Mes actual
+                next_month_start      # Mes siguiente
+            ]
+            
+            for month_start in search_months:
                 if len(slots) >= max_slots:
                     break
+                
+                month_name = month_start.strftime('%B %Y')
+                print(f"📅 Consultando {month_name}...")
                     
-                # Obtener horarios del día
-                day_data = self.get_service_day_data(store, service, instance_code, dia)
-                day_slots = day_data.get('get_day_slots', {})
+                # Obtener días disponibles del mes
+                month_data = self.get_service_month_data(
+                    store, service, instance_code, month_start.strftime('%Y-%m-%d')
+                )
                 
-                # Extraer horarios válidos
-                valid_hours = self._extract_valid_hours(day_slots)
+                open_days = month_data.get('get_open_days', {})
+                service_price = month_data.get('service_price')
                 
-                for hora in valid_hours:
-                    slots.append({
-                        'fecha': dia,
-                        'hora': hora,
-                        'precio': service_price,
-                        'store': store,
-                        'service': service
-                    })
+                # Filtrar días válidos en el rango correcto
+                valid_days = self._filter_valid_days(open_days)
+                
+                # Solo tomar fechas desde hoy hasta final del mes siguiente
+                filtered_days = []
+                for dia in valid_days:
+                    try:
+                        dia_date = datetime.datetime.strptime(dia, '%Y-%m-%d').date()
+                        # Debe estar entre hoy y final del mes siguiente
+                        if today <= dia_date <= end_of_next_month:
+                            filtered_days.append(dia)
+                    except:
+                        continue
+                
+                # Ordenar fechas cronológicamente
+                filtered_days.sort()
+                
+                print(f"   📋 Días disponibles en {month_name}: {len(filtered_days)}")
+                
+                for dia in filtered_days:
                     if len(slots) >= max_slots:
                         break
+                        
+                    # Obtener horarios del día
+                    day_data = self.get_service_day_data(store, service, instance_code, dia)
+                    day_slots = day_data.get('get_day_slots', {})
+                    
+                    # Extraer horarios válidos
+                    valid_hours = self._extract_valid_hours(day_slots)
+                    
+                    if valid_hours:
+                        print(f"   ✅ {dia}: {len(valid_hours)} horarios disponibles")
+                        
+                        # Solo añadir si realmente hay horarios válidos
+                        for hora in valid_hours:
+                            slots.append({
+                                'fecha': dia,
+                                'hora': hora,
+                                'precio': service_price,
+                                'store': store,
+                                'service': service
+                            })
+                            if len(slots) >= max_slots:
+                                break
+                    else:
+                        print(f"   ❌ {dia}: Sin horarios disponibles - SALTANDO")
+            
+            return slots
         
-        return slots
+        finally:
+            # Restore original session
+            self.session = original_session
     
     def _filter_valid_days(self, open_days: Any) -> List[str]:
-    # Filtra días válidos de la respuesta de disponibilidad
+        # Filtra días válidos de la respuesta de disponibilidad
         valid_days = []
         if isinstance(open_days, dict):
-            # Claves donde el valor es "1" (disponible)
-            valid_days = [k for k, v in open_days.items() if v == "1"]
+            # El sistema devuelve fechas como valores, no como indicadores
+            # Formato: {'n0': '2025-09-15', 'n1': '2025-09-16', ...}
+            for key, value in open_days.items():
+                if isinstance(value, str) and len(value) == 10 and '-' in value:
+                    # Validar que sea una fecha válida (YYYY-MM-DD)
+                    try:
+                        year, month, day = value.split('-')
+                        if len(year) == 4 and len(month) == 2 and len(day) == 2:
+                            valid_days.append(value)
+                    except:
+                        continue
         elif isinstance(open_days, list):
             valid_days = [v for v in open_days if isinstance(v, str) and not v.startswith('n')]
         return valid_days
     
     def _extract_valid_hours(self, day_slots: Any) -> List[str]:
-    # Extrae horarios válidos en formato HH:MM de los slots del día
+        # Extrae horarios válidos en formato HH:MM de los slots del día
         valid_hours = []
+        
         def extract_hour(hora_str):
             # Extrae HH:MM de 'YYYY-MM-DD HH:MM:SS'
             if isinstance(hora_str, str) and len(hora_str) >= 16:
                 return hora_str[11:16]
             return None
+        
         if isinstance(day_slots, dict):
-            for slot in day_slots.values():
-                if isinstance(slot, list):
-                    for hora in slot:
+            for slot_group in day_slots.values():
+                if isinstance(slot_group, dict):
+                    # Estructura anidada: {"n0": {"n0": "2025-09-15 08:10:00", "n1": "..."}, ...}
+                    for hora_str in slot_group.values():
+                        h = extract_hour(hora_str)
+                        if h:
+                            valid_hours.append(h)
+                elif isinstance(slot_group, list):
+                    # Lista de horarios
+                    for hora in slot_group:
                         h = extract_hour(hora)
                         if h:
                             valid_hours.append(h)
-                elif isinstance(slot, str):
-                    h = extract_hour(slot)
+                elif isinstance(slot_group, str):
+                    # Horario directo
+                    h = extract_hour(slot_group)
                     if h:
                         valid_hours.append(h)
         elif isinstance(day_slots, list):
@@ -363,6 +733,8 @@ class SitValScraper:
                 h = extract_hour(hora)
                 if h:
                     valid_hours.append(h)
-        return valid_hours
+        
+        # Eliminar duplicados y ordenar
+        return sorted(list(set(valid_hours)))
 
 

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "your_project_number",
+    "project_id": "your-firebase-project",
+    "storage_bucket": "your-firebase-project.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:your_project_number:android:your_app_id",
+        "android_client_info": {
+          "package_name": "com.paco.citabot"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "YOUR_API_KEY_HERE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

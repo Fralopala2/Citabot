@@ -1,9 +1,7 @@
 @echo off
-REM Navigate to backend folder
+echo 🚀 Starting CitaBot Backend...
+echo 📡 Redirecting to backend specific script...
+echo.
+
 cd citabot-backend
-
-REM Activate virtual environment
-call venv\Scripts\activate
-
-REM Run FastAPI server with auto-reload
-uvicorn main:app --reload
+call start_server.bat

@@ -1,18 +1,52 @@
 import threading
 import time
+import os
 from fastapi import FastAPI, Request, Query
+from fastapi.middleware.cors import CORSMiddleware
 from notifier import send_notification
 from scraper_sitval import SitValScraper
 
 
 
 scraper = SitValScraper()
-app = FastAPI()
+app = FastAPI(
+    title="Citabot API",
+    description="API para consultar citas ITV en tiempo real",
+    version="1.0.0"
+)
+
+# Configure CORS for production
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, specify your app's domain
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # In-memory cache for available slots
 slots_cache = {}
 slots_cache_lock = threading.Lock()
-CACHE_TTL = 300  # seconds (5 minutes)
+
+# More conservative cache configuration to avoid bans
+CACHE_TTL = 1800  # 30 minutes (more conservative)
+BACKGROUND_REFRESH_INTERVAL = 900  # 15 minutes between background updates
+MAX_CONCURRENT_REQUESTS = 2  # Maximum 2 simultaneous requests to scraper
+REQUEST_DELAY = 5  # 5 seconds between requests to be respectful
+
+# Semaphore to limit concurrent requests
+scraper_semaphore = threading.Semaphore(MAX_CONCURRENT_REQUESTS)
+
+# Health check endpoint
+@app.get("/")
+def health_check():
+    """Health check endpoint"""
+    return {
+        "status": "healthy",
+        "service": "Citabot API",
+        "version": "1.0.0",
+        "cache_entries": len(slots_cache)
+    }
 
 def cache_key(store, service):
     return f"{store}:{service}"
@@ -32,24 +66,50 @@ def set_cached_slots(store, service, data):
 
 # Background thread to refresh cache periodically
 def background_cache_refresher():
+    """Updates available appointments cache in background respectfully"""
     while True:
-        # You can customize which stations/services to refresh
-        # For demo: refresh all keys already in cache
-        with slots_cache_lock:
-            keys = list(slots_cache.keys())
-        for key in keys:
-            store, service = key.split(":")
-            instance_code = scraper.get_instance_code_robust()
-            data = scraper.get_next_available_slots(store, service, instance_code, 10)
-            set_cached_slots(store, service, data)
-        time.sleep(CACHE_TTL)
+        try:
+            # Refresh all keys that are already in cache
+            with slots_cache_lock:
+                keys = list(slots_cache.keys())
+            
+            if keys:
+                print(f"🔄 Refreshing cache for {len(keys)} station-service combinations...")
+                
+                for i, key in enumerate(keys):
+                    try:
+                        # Use semaphore to limit concurrent requests
+                        with scraper_semaphore:
+                            store, service = key.split(":")
+                            print(f"   Updating {key} ({i+1}/{len(keys)})")
+                            
+                            # Use empty instanceCode as it works perfectly
+                            data = scraper.get_next_available_slots(store, service, "", 10)
+                            set_cached_slots(store, service, data)
+                            
+                            # Delay between quests s to be respectful
+                            if i < len(keys) - 1:  # No delay after the last one
+                                time.sleep(REQUEST_DELAY)
+                                
+                    except Exception as e:
+                        print(f"   ❌ Error refreshing cache for {key}: {e}")
+                
+                print("✅ Cache refreshed completely")
+            else:
+                print("📭 No cache entries to refresh")
+                
+        except Exception as e:
+            print(f"❌ Error in background_cache_refresher: {e}")
+        
+        # Wait for configured interval before next refresh
+        time.sleep(BACKGROUND_REFRESH_INTERVAL)
 
 threading.Thread(target=background_cache_refresher, daemon=True).start()
 
-# Endpoint para obtener servicios disponibles según estación
+# Endpoint to get available services by station
 @app.get("/itv/servicios")
 def get_servicios(store_id: str):
-    instance_code = scraper.get_instance_code_robust()
+    instance_code = scraper.get_instance_code_robust(store_id)
     group_data = scraper.get_group_startup(instance_code, store_id)
     servicios = []
     # Buscar la estación por store_id y devolver servicios simulados según tipo
@@ -60,23 +120,28 @@ def get_servicios(store_id: str):
                     tipo = level2.get('name')
                     if tipo == 'Estaciones fijas':
                         servicios = [
-                            {'nombre': 'Turismo', 'service': 259},
-                            {'nombre': 'Motocicleta', 'service': 260},
-                            {'nombre': 'Vehículo ligero', 'service': 261},
-                            {'nombre': 'Ciclomotor/ Motocicleta sin catalizar', 'service': 262},
+                            {'nombre': 'Turismo diésel/híbrido', 'service': 443},
+                            {'nombre': 'Turismo gasolina/híbrido', 'service': 444},
+                            {'nombre': 'Turismo eléctrico', 'service': 445},
+                            {'nombre': 'Motocicleta gasolina', 'service': 450},
+                            {'nombre': 'Motocicleta eléctrica', 'service': 451},
+                            {'nombre': 'Ciclomotor', 'service': 449},
                         ]
                     elif tipo == 'Estaciones móviles':
                         servicios = [
-                            {'nombre': 'Turismo', 'service': 259},
-                            {'nombre': 'Motocicleta', 'service': 260},
+                            {'nombre': 'Turismo diésel/híbrido', 'service': 443},
+                            {'nombre': 'Turismo gasolina/híbrido', 'service': 444},
+                            {'nombre': 'Motocicleta gasolina', 'service': 450},
                         ]
                     elif tipo == 'Estaciones agrícolas':
                         servicios = [
-                            {'nombre': 'Vehículo agrícola', 'service': 263},
+                            {'nombre': 'Turismo diésel/híbrido', 'service': 443},
+                            {'nombre': 'Turismo gasolina/híbrido', 'service': 444},
                         ]
                     else:
                         servicios = [
-                            {'nombre': 'Turismo', 'service': 259},
+                            {'nombre': 'Turismo diésel/híbrido', 'service': 443},
+                            {'nombre': 'Turismo gasolina/híbrido', 'service': 444},
                         ]
                     return {"servicios": servicios}
     return {"servicios": []}
@@ -94,37 +159,96 @@ async def register_token(request: Request):
     return {"status": "token registrado"}
 
 
-# Endpoint para obtener todas las estaciones reales
-INSTANCE_CODE = "qwkwr0is9qcmuwdg7e3x1pvqepc5e0p9"
+# Endpoint to get all real stations
 @app.get("/itv/estaciones")
 def get_estaciones():
-    print("DEBUG: INICIO get_estaciones")
-    instance_code = scraper.get_instance_code_robust()
-    print(f"DEBUG: instance_code obtenido: {instance_code}")
-    group_data = scraper.get_group_startup(instance_code)
-    print(f"DEBUG: group_data obtenido: {group_data}")
+    """Gets all available ITV stations"""
+    print("Getting ITV stations list...")
+    
+    # Use store_id "1" to get all stations (any valid store_id works)
+    instance_code = ""
+    group_data = scraper.get_group_startup(instance_code, "1")
     estaciones = scraper.extract_stations(group_data)
-    print(f"DEBUG: estaciones extraidas: {estaciones}")
-    print("DEBUG: Entrando en get_estaciones")
-    print("DEBUG: Antes de llamar a scraper.get_group_startup")
-    # Devuelve la lista de servicios y parámetros de la estación
-    # Obtener instanceCode dinámico
-    # El instanceCode debe ser gestionado por el frontend/cliente y propagado en cada consulta
-    # Para mostrar todas las estaciones, usamos un instanceCode fijo o '0'
-    instance_code = scraper.get_instance_code_robust()
-    group_data = scraper.get_group_startup(instance_code)
-    estaciones = scraper.extract_stations(group_data)
-    return {"servicios": estaciones}
+    
+    print(f"Estaciones obtenidas: {len(estaciones)}")
+    return {"estaciones": estaciones}
 
 
-# Endpoint para obtener fechas y horas próximas de cita real (con caché)
+# Endpoint to get upcoming real appointment dates and times (with cache)
 @app.get("/itv/fechas")
-def get_fechas(store: str, service: str, instance_code: str = "0", n: int = 3):
-    # Try cache first
+def get_fechas(store: str, service: str, n: int = 3):
+    """Gets next available appointments for a station and service"""
+    print(f"🔍 Searching appointments for station {store}, service {service}")
+    
+    # Try to get from cache first
     cached = get_cached_slots(store, service)
     if cached:
+        print(f"📦 Returning {len(cached[:n])} appointments from cache")
         return {"fechas_horas": cached[:n]}
-    # If not cached, fetch and cache
-    fechas_horas = scraper.get_next_available_slots(store, service, instance_code, n)
-    set_cached_slots(store, service, fechas_horas)
-    return {"fechas_horas": fechas_horas}
+    
+    # If not in cache, get with concurrency control
+    print(f"🌐 No cache, getting fresh data...")
+    
+    try:
+        # Use semaphore to limit concurrent requests
+        with scraper_semaphore:
+            # Use empty instanceCode as it works perfectly
+            fechas_horas = scraper.get_next_available_slots(store, service, "", n)
+            set_cached_slots(store, service, fechas_horas)
+            
+            print(f"✅ Got {len(fechas_horas)} new appointments")
+            return {"fechas_horas": fechas_horas}
+            
+    except Exception as e:
+        print(f"❌ Error getting appointments: {e}")
+        # Return empty array in case of error
+        return {"fechas_horas": []}
+# Endpoint to register FCM token
+@app.post("/register-token")
+async def register_token(request: Request):
+    data = await request.json()
+    token = data.get("token")
+    print(f"FCM Token registered: {token}")
+    return {"message": "Token registered successfully"}
+
+# Endpoint to monitor cache status
+@app.get("/cache/status")
+def get_cache_status():
+    """Returns information about cache status"""
+    with slots_cache_lock:
+        cache_info = []
+        current_time = time.time()
+        
+        for key, entry in slots_cache.items():
+            age_seconds = current_time - entry['timestamp']
+            age_minutes = age_seconds / 60
+            is_expired = age_seconds > CACHE_TTL
+            
+            cache_info.append({
+                'key': key,
+                'entries': len(entry['data']),
+                'age_minutes': round(age_minutes, 1),
+                'is_expired': is_expired,
+                'last_updated': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(entry['timestamp']))
+            })
+    
+    return {
+        'total_entries': len(slots_cache),
+        'cache_ttl_minutes': CACHE_TTL / 60,
+        'refresh_interval_minutes': BACKGROUND_REFRESH_INTERVAL / 60,
+        'max_concurrent_requests': MAX_CONCURRENT_REQUESTS,
+        'request_delay_seconds': REQUEST_DELAY,
+        'entries': cache_info
+    }
+
+# Endpoint to manually clear cache
+@app.post("/cache/clear")
+def clear_cache():
+    """Clears all cache"""
+    with slots_cache_lock:
+        cleared_entries = len(slots_cache)
+        slots_cache.clear()
+    
+    return {
+        "message": f"Cache cleared. {cleared_entries} entries removed."
+    }

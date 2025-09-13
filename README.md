@@ -77,10 +77,51 @@ Citabot is a Flutter app for Android that automates the search for available app
 - `GET /itv/fechas` — Returns next available dates and times for ITV appointments
 - `GET /cita-nia` — Returns simulated NIA appointments
 
+## 🔧 Configuration
+
+### ⚠️ IMPORTANT: Configuration Files
+
+**Before running the project, you must configure the sensitive files:**
+
+#### Backend (Firebase and environment variables):
+```bash
+cd citabot-backend
+cp .env.example .env
+cp firebase-service-account.json.example firebase-service-account.json
+```
+
+Then edit both files with your real Firebase credentials.
+
+#### Flutter App (Google Services):
+```bash
+cd citabot_app/android/app
+cp google-services.json.example google-services.json
+```
+
+Edit the file with your Firebase configuration for Android.
+
+### Environment Variables
+
+The `.env` file in `citabot-backend/` should contain:
+
+```env
+# Firebase Configuration
+FIREBASE_SERVER_KEY=your_server_key_here
+FIREBASE_DEVICE_TOKEN=your_device_token_here
+
+# Cache Configuration (optional)
+CACHE_TTL=1800  # 30 minutes
+BACKGROUND_REFRESH_INTERVAL=900  # 15 minutes
+MAX_CONCURRENT_REQUESTS=2
+REQUEST_DELAY=3.0
+```
+
 ## Technical Details
 
 - The backend uses robust scraping logic to extract real appointment data from the official SITVAL system
 - InstanceCode extraction is handled automatically for reliable results
+- **Intelligent caching system** - 30 minutes TTL, rate limiting to avoid bans
+- **Rate limiting** - Maximum 2 concurrent requests, 3s delay between requests
 - All endpoints respond in JSON format
 - The app displays results in dialogs and interactive screens
 - FCM token is sent automatically to the backend when the app starts
