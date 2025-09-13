@@ -58,7 +58,7 @@ class SitValScraper:
             response_text = response.text
             if response.headers.get('Content-Encoding') == 'br':
                 try:
-                    import brotli
+                    import brotli # type: ignore
                     decompressed = brotli.decompress(response.content)
                     response_text = decompressed.decode("utf-8", errors="replace")
                     with open(f"debug_{module}_response.txt", "w", encoding="utf-8") as f:

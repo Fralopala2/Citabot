@@ -20,7 +20,7 @@ Citabot is a Flutter app for Android that automates the search for available app
 - Backend scraping logic with robust instanceCode extraction and session management
 - FastAPI backend with endpoints for stations, services, and appointments
 - Simulated endpoints for NIA and test purposes
-- Modular backend ready for expansion (more services, cities, etc.)
+- Modular backend ready for expansion (more services, cities, etc.).
 
 ## Requirements
 
