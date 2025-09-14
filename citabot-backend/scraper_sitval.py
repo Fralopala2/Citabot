@@ -54,7 +54,7 @@ class SitValScraper:
             with open(f"debug_{module}_response.bin", "wb") as f:
                 f.write(response.content)
             
-            # Handle Brotli compression
+            # Handle Brotli compression (optional)
             response_text = response.text
             if response.headers.get('Content-Encoding') == 'br':
                 try:
@@ -63,8 +63,12 @@ class SitValScraper:
                     response_text = decompressed.decode("utf-8", errors="replace")
                     with open(f"debug_{module}_response.txt", "w", encoding="utf-8") as f:
                         f.write(response_text)
+                except ImportError:
+                    print("Brotli not available - using response.text directly")
+                    response_text = response.text
                 except Exception as e:
-                    print(f"Error descomprimiendo Brotli: {e}")
+                    print(f"Error descomprimiendo Brotli: {e} - using response.text directly")
+                    response_text = response.text
             
             # Search for instanceCode in response text before parsing JSON
             instance_patterns = [
