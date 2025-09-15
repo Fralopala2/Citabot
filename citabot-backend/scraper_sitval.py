@@ -61,18 +61,15 @@ class SitValScraper:
                     import brotli # type: ignore
                     decompressed = brotli.decompress(response.content)
                     response_text = decompressed.decode("utf-8", errors="replace")
-                    with open(f"debug_{module}_response.txt", "w", encoding="utf-8") as f:
-                        f.write(response_text)
+                    print(f"[BROTLI OK] Respuesta descomprimida para {module}:\n{response_text[:2000]}")
                 except ImportError:
                     print("Brotli not available - using response.text directly")
                     response_text = response.text
-                    with open(f"debug_{module}_response_fallback.txt", "w", encoding="utf-8") as f:
-                        f.write(response_text)
+                    print(f"[BROTLI FALLBACK] Respuesta .text para {module}:\n{response_text[:2000]}")
                 except Exception as e:
                     print(f"Error descomprimiendo Brotli: {e} - using response.text directly")
                     response_text = response.text
-                    with open(f"debug_{module}_response_fallback.txt", "w", encoding="utf-8") as f:
-                        f.write(response_text)
+                    print(f"[BROTLI ERROR] Respuesta .text para {module}:\n{response_text[:2000]}")
             
             # Search for instanceCode in response text before parsing JSON
             instance_patterns = [
