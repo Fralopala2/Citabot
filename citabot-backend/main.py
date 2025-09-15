@@ -112,37 +112,18 @@ def get_servicios(store_id: str):
     instance_code = scraper.get_instance_code_robust(store_id)
     group_data = scraper.get_group_startup(instance_code, store_id)
     servicios = []
-    # Buscar la estación por store_id y devolver servicios simulados según tipo
+    # Buscar la estación por store_id y extraer servicios reales
     for prov in group_data.get('groups', {}).values():
         for level2 in prov.get('level2', {}).values():
             for store in level2.get('stores', {}).values():
                 if str(store.get('store')) == str(store_id):
-                    tipo = level2.get('name')
-                    if tipo == 'Estaciones fijas':
-                        servicios = [
-                            {'nombre': 'Turismo diésel/híbrido', 'service': 443},
-                            {'nombre': 'Turismo gasolina/híbrido', 'service': 444},
-                            {'nombre': 'Turismo eléctrico', 'service': 445},
-                            {'nombre': 'Motocicleta gasolina', 'service': 450},
-                            {'nombre': 'Motocicleta eléctrica', 'service': 451},
-                            {'nombre': 'Ciclomotor', 'service': 449},
-                        ]
-                    elif tipo == 'Estaciones móviles':
-                        servicios = [
-                            {'nombre': 'Turismo diésel/híbrido', 'service': 443},
-                            {'nombre': 'Turismo gasolina/híbrido', 'service': 444},
-                            {'nombre': 'Motocicleta gasolina', 'service': 450},
-                        ]
-                    elif tipo == 'Estaciones agrícolas':
-                        servicios = [
-                            {'nombre': 'Turismo diésel/híbrido', 'service': 443},
-                            {'nombre': 'Turismo gasolina/híbrido', 'service': 444},
-                        ]
-                    else:
-                        servicios = [
-                            {'nombre': 'Turismo diésel/híbrido', 'service': 443},
-                            {'nombre': 'Turismo gasolina/híbrido', 'service': 444},
-                        ]
+                    # Buscar servicios reales en la estación
+                    categories = store.get('categoriesServices') or {}
+                    for cat in categories.values():
+                        nombre = cat.get('name')
+                        service_id = cat.get('id')
+                        if nombre and service_id:
+                            servicios.append({'nombre': nombre, 'service': service_id})
                     return {"servicios": servicios}
     return {"servicios": []}
 
