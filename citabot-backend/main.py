@@ -119,10 +119,11 @@ def get_servicios(store_id: str):
         cat_name = cat.get('name')
         services = cat.get('services') or []
         for serv in services:
-            service_id = serv.get('id')
-            nombre = serv.get('name')
-            if nombre and service_id:
-                servicios.append({'nombre': nombre, 'service': service_id, 'categoria': cat_name})
+            if isinstance(serv, dict):
+                service_id = serv.get('id')
+                nombre = serv.get('name')
+                if nombre and service_id:
+                    servicios.append({'nombre': nombre, 'service': service_id, 'categoria': cat_name})
     print(f"[DEBUG] servicios extraídos de categoriesServices: {servicios}")
     return {"servicios": servicios}
 
