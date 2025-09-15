@@ -10,6 +10,14 @@ local.properties
 *.hprof
 *.DS_Store
 
+
+
+
+
+
+
+
+
 # Flutter build outputs
 citabot_app/build/
 citabot_app/.dart_tool/
@@ -78,6 +86,9 @@ discover_*.py
 **/test_*
 **/tests/
 
+# EXCEPCIÓN: Nunca ignores archivos fuente importantes
+!citabot_app/lib/main.dart
+!citabot_app/lib/config.dart
 # Distribution / packaging
 .Python
 build/
@@ -86,7 +97,6 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
 lib64/
 parts/
 sdist/
