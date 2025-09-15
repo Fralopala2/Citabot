@@ -117,7 +117,8 @@ def get_servicios(store_id: str):
         for level2 in prov.get('level2', {}).values():
             for store in level2.get('stores', {}).values():
                 if str(store.get('store')) == str(store_id):
-                    print(f"[DEBUG] store encontrado para store_id={store_id}: {json.dumps(store, ensure_ascii=False)[:2000]}")
+                    # Imprimir toda la estructura del store para depuración
+                    print(f"[DEBUG] store completo para store_id={store_id}: {json.dumps(store, ensure_ascii=False)}")
                     categories = store.get('categoriesServices') or {}
                     print(f"[DEBUG] categoriesServices extraído: {json.dumps(categories, ensure_ascii=False)[:2000]}")
                     servicios = []

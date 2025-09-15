@@ -66,9 +66,13 @@ class SitValScraper:
                 except ImportError:
                     print("Brotli not available - using response.text directly")
                     response_text = response.text
+                    with open(f"debug_{module}_response_fallback.txt", "w", encoding="utf-8") as f:
+                        f.write(response_text)
                 except Exception as e:
                     print(f"Error descomprimiendo Brotli: {e} - using response.text directly")
                     response_text = response.text
+                    with open(f"debug_{module}_response_fallback.txt", "w", encoding="utf-8") as f:
+                        f.write(response_text)
             
             # Search for instanceCode in response text before parsing JSON
             instance_patterns = [
