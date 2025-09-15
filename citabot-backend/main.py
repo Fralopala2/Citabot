@@ -117,18 +117,19 @@ def get_servicios(store_id: str):
         for level2 in prov.get('level2', {}).values():
             for store in level2.get('stores', {}).values():
                 if str(store.get('store')) == str(store_id):
-                    print(f"[DEBUG] store encontrado para store_id={store_id}: {json.dumps(store, ensure_ascii=False)[:1000]}")
-                    params = store.get('params') or []
-                    print(f"[DEBUG] params extraído: {json.dumps(params, ensure_ascii=False)[:2000]}")
+                    print(f"[DEBUG] store encontrado para store_id={store_id}: {json.dumps(store, ensure_ascii=False)[:2000]}")
+                    categories = store.get('categoriesServices') or {}
+                    print(f"[DEBUG] categoriesServices extraído: {json.dumps(categories, ensure_ascii=False)[:2000]}")
                     servicios = []
-                    for param in params:
-                        # Solo servicios que sean de tipo 'Servicio' (type == "-2")
-                        if str(param.get('store')) == str(store_id) and param.get('type') == "-2":
-                            nombre = param.get('name')
-                            service_id = param.get('id')
+                    for cat in categories.values():
+                        cat_name = cat.get('name')
+                        services = cat.get('services') or []
+                        for serv in services:
+                            service_id = serv.get('id')
+                            nombre = serv.get('name')
                             if nombre and service_id:
-                                servicios.append({'nombre': nombre, 'service': service_id})
-                    print(f"[DEBUG] servicios extraídos de params: {servicios}")
+                                servicios.append({'nombre': nombre, 'service': service_id, 'categoria': cat_name})
+                    print(f"[DEBUG] servicios extraídos de categoriesServices: {servicios}")
                     return {"servicios": servicios}
     return {"servicios": []}
 
