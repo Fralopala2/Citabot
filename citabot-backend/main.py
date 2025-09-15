@@ -1,3 +1,4 @@
+import json
 import threading
 import time
 import os
@@ -111,19 +112,23 @@ threading.Thread(target=background_cache_refresher, daemon=True).start()
 def get_servicios(store_id: str):
     instance_code = scraper.get_instance_code_robust(store_id)
     group_data = scraper.get_group_startup(instance_code, store_id)
-    servicios = []
-    # Buscar la estación por store_id y extraer servicios reales
+    # Buscar la estación por store_id y extraer servicios reales desde params
     for prov in group_data.get('groups', {}).values():
         for level2 in prov.get('level2', {}).values():
             for store in level2.get('stores', {}).values():
                 if str(store.get('store')) == str(store_id):
-                    # Buscar servicios reales en la estación
-                    categories = store.get('categoriesServices') or {}
-                    for cat in categories.values():
-                        nombre = cat.get('name')
-                        service_id = cat.get('id')
-                        if nombre and service_id:
-                            servicios.append({'nombre': nombre, 'service': service_id})
+                    print(f"[DEBUG] store encontrado para store_id={store_id}: {json.dumps(store, ensure_ascii=False)[:1000]}")
+                    params = store.get('params') or []
+                    print(f"[DEBUG] params extraído: {json.dumps(params, ensure_ascii=False)[:2000]}")
+                    servicios = []
+                    for param in params:
+                        # Solo servicios que sean de tipo 'Servicio' (type == "-2")
+                        if str(param.get('store')) == str(store_id) and param.get('type') == "-2":
+                            nombre = param.get('name')
+                            service_id = param.get('id')
+                            if nombre and service_id:
+                                servicios.append({'nombre': nombre, 'service': service_id})
+                    print(f"[DEBUG] servicios extraídos de params: {servicios}")
                     return {"servicios": servicios}
     return {"servicios": []}
 
