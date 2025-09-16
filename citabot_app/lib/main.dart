@@ -366,12 +366,16 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
         final data = jsonDecode(response.body);
         estaciones = data['estaciones'];
       }
+      setState(() {
+        cargandoEstaciones = false;
+      });
     } catch (e) {
       estaciones = [];
+      debugPrint('Error al cargar estaciones: $e');
+      setState(() {
+        cargandoEstaciones = false;
+      });
     }
-    setState(() {
-      cargandoEstaciones = false;
-    });
   }
 
   Future<void> cargarServiciosDisponibles() async {
@@ -387,13 +391,21 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
             data['servicios'] ?? [],
           );
         }
+        setState(() {
+          servicioSeleccionado = null;
+        });
       } catch (e) {
         serviciosDisponibles = [];
+        debugPrint('Error al cargar servicios: $e');
+        setState(() {
+          servicioSeleccionado = null;
+        });
       }
+    } else {
+      setState(() {
+        servicioSeleccionado = null;
+      });
     }
-    setState(() {
-      servicioSeleccionado = null;
-    });
   }
 
   Future<void> buscarFechas() async {
