@@ -108,6 +108,7 @@ share/python-wheels/
 *.egg
 MANIFEST
 
+
 # PyInstaller
 #  Usually these files are written by a python script from a template
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
@@ -290,3 +291,8 @@ __marimo__/
 
 # Supabase
 firebase-service-account.json
+
+# KEY
+key.properties
+**/*.keystore
+**/*.jks
