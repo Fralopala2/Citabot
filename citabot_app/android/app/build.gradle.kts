@@ -1,3 +1,6 @@
+
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -8,6 +11,23 @@ android {
     namespace = "com.paco.citabot"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
+
+    // Lee las propiedades de la clave de firma
+    val keystoreProperties = Properties()
+    val keystorePropertiesFile = rootProject.file("../key.properties")
+    if (keystorePropertiesFile.exists()) {
+        keystoreProperties.load(keystorePropertiesFile.inputStream())
+    }
+
+    signingConfigs {
+        create("release") {
+            val storeFilePath = keystoreProperties["storeFile"] as String?
+            storeFile = if (storeFilePath != null) file(storeFilePath) else null
+            storePassword = keystoreProperties["storePassword"] as String?
+            keyAlias = keystoreProperties["keyAlias"] as String?
+            keyPassword = keystoreProperties["keyPassword"] as String?
+        }
+    }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -29,7 +49,10 @@ android {
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
+            isMinifyEnabled = false
+            isShrinkResources = false
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 }
