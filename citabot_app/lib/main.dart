@@ -281,13 +281,6 @@ class _MyHomePageState extends State<MyHomePage> {
               },
             ),
             const SizedBox(height: 16),
-            if (_isBannerAdReady && _bannerAd != null)
-              Container(
-                width: _bannerAd!.size.width.toDouble(),
-                height: _bannerAd!.size.height.toDouble(),
-                alignment: Alignment.center,
-                child: AdWidget(ad: _bannerAd!),
-              ),
             const SizedBox(height: 32),
             const Text(
               'Tu token FCM es:',
@@ -301,6 +294,14 @@ class _MyHomePageState extends State<MyHomePage> {
                 style: const TextStyle(fontSize: 12),
               ),
             ),
+            const SizedBox(height: 32),
+            if (_isBannerAdReady && _bannerAd != null)
+              Container(
+                width: _bannerAd!.size.width.toDouble(),
+                height: _bannerAd!.size.height.toDouble(),
+                alignment: Alignment.center,
+                child: AdWidget(ad: _bannerAd!),
+              ),
           ],
         ),
       ),
@@ -317,6 +318,8 @@ class ITVCitaScreen extends StatefulWidget {
 }
 
 class _ITVCitaScreenState extends State<ITVCitaScreen> {
+  BannerAd? _bannerAd;
+  bool _isBannerAdReady = false;
   List<dynamic> estaciones = [];
   dynamic estacionSeleccionada;
   List<Map<String, dynamic>> serviciosDisponibles = [];
@@ -328,6 +331,28 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
   void initState() {
     super.initState();
     cargarEstaciones();
+    _bannerAd = BannerAd(
+      adUnitId: 'ca-app-pub-9610124391381160/8625088028',
+      size: AdSize.banner,
+      request: AdRequest(),
+      listener: BannerAdListener(
+        onAdLoaded: (_) {
+          setState(() {
+            _isBannerAdReady = true;
+          });
+        },
+        onAdFailedToLoad: (ad, error) {
+          ad.dispose();
+          debugPrint('Error al cargar banner (ITVCitaScreen): \\${error.message}');
+        },
+      ),
+    )..load();
+  }
+
+  @override
+  void dispose() {
+    _bannerAd?.dispose();
+    super.dispose();
   }
 
   Future<void> cargarEstaciones() async {
@@ -565,6 +590,14 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
               ),
               onPressed: cargandoFechas ? null : buscarFechas,
             ),
+            const SizedBox(height: 32),
+            if (_isBannerAdReady && _bannerAd != null)
+              Container(
+                width: _bannerAd!.size.width.toDouble(),
+                height: _bannerAd!.size.height.toDouble(),
+                alignment: Alignment.center,
+                child: AdWidget(ad: _bannerAd!),
+              ),
           ],
         ),
       ),
