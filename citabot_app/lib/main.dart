@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:http/http.dart' as http;
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'dart:convert';
 import 'horas_disponibles_screen.dart';
 import 'config.dart';
@@ -9,6 +10,8 @@ import 'config.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+  // Inicializa AdMob
+  await MobileAds.instance.initialize();
   runApp(const MyApp());
 }
 
@@ -36,6 +39,8 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
+  BannerAd? _bannerAd;
+  bool _isBannerAdReady = false;
   void mostrarErrorServicios(BuildContext context) {
     if (!mounted) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -53,6 +58,36 @@ class _MyHomePageState extends State<MyHomePage> {
         ),
       );
     });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // Inicializar BannerAd
+    _bannerAd = BannerAd(
+      adUnitId: 'ca-app-pub-9610124391381160/2707419077',
+      size: AdSize.banner,
+      request: AdRequest(),
+      listener: BannerAdListener(
+        onAdLoaded: (_) {
+          setState(() {
+            _isBannerAdReady = true;
+          });
+        },
+        onAdFailedToLoad: (ad, error) {
+          ad.dispose();
+          debugPrint('Error al cargar banner: \\${error.message}');
+        },
+      ),
+    )..load();
+    // Inicializar FCM token
+    _getTokenAndSend();
+  }
+
+  @override
+  void dispose() {
+    _bannerAd?.dispose();
+    super.dispose();
   }
   List<dynamic> estaciones = [];
   List<Map<String, dynamic>> tiposVehiculo = [];
@@ -151,11 +186,6 @@ class _MyHomePageState extends State<MyHomePage> {
 
   String? _token;
 
-  @override
-  void initState() {
-    super.initState();
-    _getTokenAndSend();
-  }
 
   Future<void> _getTokenAndSend() async {
     final token = await FirebaseMessaging.instance.getToken();
@@ -251,6 +281,13 @@ class _MyHomePageState extends State<MyHomePage> {
               },
             ),
             const SizedBox(height: 16),
+            if (_isBannerAdReady && _bannerAd != null)
+              Container(
+                width: _bannerAd!.size.width.toDouble(),
+                height: _bannerAd!.size.height.toDouble(),
+                alignment: Alignment.center,
+                child: AdWidget(ad: _bannerAd!),
+              ),
             const SizedBox(height: 32),
             const Text(
               'Tu token FCM es:',

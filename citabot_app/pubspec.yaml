@@ -35,6 +35,7 @@ dependencies:
   flutter_local_notifications: ^19.4.1
   http: ^1.1.0
   provider: ^6.1.5
+  google_mobile_ads: ^5.0.0
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
