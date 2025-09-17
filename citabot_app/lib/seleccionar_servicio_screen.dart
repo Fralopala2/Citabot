@@ -19,7 +19,7 @@ class SeleccionarServicioScreen extends StatelessWidget {
           return ListTile(
             title: Text(servicio['nombre'] ?? ''),
             onTap: () {
-              Navigator.pop(context, servicio);
+              Navigator.pop(context, servicio['nombre']);
             },
           );
         },

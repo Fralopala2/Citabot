@@ -9,6 +9,7 @@ import 'horas_disponibles_screen.dart';
 import 'config.dart';
 import 'favoritos_screen.dart';
 import 'seleccionar_servicio_screen.dart';
+import 'categorias_servicio.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -228,85 +229,95 @@ class _MyHomePageState extends State<MyHomePage> {
         centerTitle: true,
         elevation: 4,
       ),
-      body: Container(
-        width: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Colors.white, Color(0xFFE3D7FF)],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            // Logo Citabot
-            Image.asset('assets/images/citabot.png', width: 120, height: 120),
-            const SizedBox(height: 16),
-            const Text(
-              'Bienvenido a Citabot',
-              style: TextStyle(
-                fontSize: 26,
-                fontWeight: FontWeight.bold,
-                color: Colors.deepPurple,
+      body: Stack(
+        children: [
+          Container(
+            width: double.infinity,
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Colors.white, Color(0xFFE3D7FF)],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
               ),
             ),
-            const SizedBox(height: 16),
-            const Text(
-              '¿Qué cita quieres buscar?',
-              style: TextStyle(fontSize: 18),
-            ),
-            const SizedBox(height: 32),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.deepPurple,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 32,
-                  vertical: 16,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              icon: const Icon(Icons.car_repair, color: Colors.white),
-              label: const Text(
-                'Buscar cita ITV',
-                style: TextStyle(color: Colors.white, fontSize: 18),
-              ),
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => ITVCitaScreen(token: _token),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // Logo Citabot
+                Image.asset('assets/images/citabot.png', width: 120, height: 120),
+                const SizedBox(height: 16),
+                const Text(
+                  'Bienvenido a Citabot',
+                  style: TextStyle(
+                    fontSize: 26,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.deepPurple,
                   ),
-                );
-              },
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  '¿Qué cita quieres buscar?',
+                  style: TextStyle(fontSize: 18),
+                ),
+                const SizedBox(height: 32),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.deepPurple,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 32,
+                      vertical: 16,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  icon: const Icon(Icons.car_repair, color: Colors.white),
+                  label: const Text(
+                    'Buscar cita ITV',
+                    style: TextStyle(color: Colors.white, fontSize: 18),
+                  ),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => ITVCitaScreen(token: _token),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 16),
+                const SizedBox(height: 32),
+                const Text(
+                  'Tu token FCM es:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  child: SelectableText(
+                    _token ?? 'Obteniendo token...',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+                const SizedBox(height: 32),
+                // El banner se elimina de aquí
+              ],
             ),
-            const SizedBox(height: 16),
-            const SizedBox(height: 32),
-            const Text(
-              'Tu token FCM es:',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: SelectableText(
-                _token ?? 'Obteniendo token...',
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 12),
-              ),
-            ),
-            const SizedBox(height: 32),
-            if (_isBannerAdReady && _bannerAd != null)
-              Container(
+          ),
+          if (_isBannerAdReady && _bannerAd != null)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 24, // margen para no tapar la barra del sistema
+              child: Container(
                 width: _bannerAd!.size.width.toDouble(),
                 height: _bannerAd!.size.height.toDouble(),
                 alignment: Alignment.center,
                 child: AdWidget(ad: _bannerAd!),
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }
@@ -346,55 +357,19 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
       );
       return;
     }
-    // 1. Obtener todos los servicios disponibles en las estaciones favoritas
-    Set<String> idsServiciosUnicos = {};
-    List<Map<String, dynamic>> serviciosUnicos = [];
-    for (final favId in favoritos) {
-      final estacion = estaciones.firstWhere(
-        (e) => e['store_id'].toString() == favId,
-        orElse: () => null,
-      );
-      if (estacion == null) continue;
-      final urlServicios = Uri.parse('${Config.serviciosUrl}?store_id=${estacion['store_id']}');
-      try {
-        final responseServicios = await http.get(urlServicios);
-        if (responseServicios.statusCode == 200) {
-          final dataServicios = jsonDecode(responseServicios.body);
-          final servicios = List<Map<String, dynamic>>.from(dataServicios['servicios'] ?? []);
-          for (final s in servicios) {
-            final id = s['service'].toString();
-            if (!idsServiciosUnicos.contains(id)) {
-              idsServiciosUnicos.add(id);
-              serviciosUnicos.add(s);
-            }
-          }
-        }
-      } catch (_) {}
-    }
-    setState(() { buscandoFavoritos = false; });
-    if (serviciosUnicos.isEmpty) {
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        builder: (context) => const AlertDialog(
-          title: Text('Servicios'),
-          content: Text('No se encontraron servicios disponibles en tus estaciones favoritas.'),
-        ),
-      );
-      return;
-    }
-    // 2. Seleccionar el servicio
-    final servicioSeleccionado = await Navigator.push<Map<String, dynamic>>(
+    // 1. Mostrar categorías unificadas
+    final categoriaSeleccionada = await Navigator.push<String>(
       context,
       MaterialPageRoute(
         builder: (context) => SeleccionarServicioScreen(
-          servicios: serviciosUnicos,
+          servicios: categoriasServicios.keys.map((k) => {'nombre': k}).toList(),
         ),
       ),
     );
-    if (!mounted || servicioSeleccionado == null) return;
+    if (!mounted || categoriaSeleccionada == null) return;
     setState(() { buscandoFavoritos = true; });
-    // 3. Buscar la primera estación favorita con fechas disponibles para ese servicio
+    final palabrasClave = categoriasServicios[categoriaSeleccionada] ?? [];
+    // 2. Buscar la primera estación favorita con fechas disponibles para esa categoría
     for (final favId in favoritos) {
       final estacion = estaciones.firstWhere(
         (e) => e['store_id']?.toString() == favId,
@@ -406,47 +381,58 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
       }
       final storeId = estacion['store_id']?.toString();
       final nombreEstacion = '${estacion['provincia'] ?? ''} - ${estacion['nombre'] ?? ''} (${estacion['tipo'] ?? ''})';
-      final serviceId = servicioSeleccionado['service'];
-      if (storeId == null || serviceId == null) {
-        debugPrint('storeId o serviceId null. storeId: $storeId, serviceId: $serviceId');
-        continue;
-      }
-      final urlFechas = Uri.parse('${Config.fechasUrl}?store=$storeId&service=$serviceId&n=1');
+      // Obtener servicios de la estación
+      final urlServicios = Uri.parse('${Config.serviciosUrl}?store_id=$storeId');
       try {
-        final responseFechas = await http.get(urlFechas);
-        if (responseFechas.statusCode == 200 && responseFechas.body.isNotEmpty) {
-          final dataFechas = jsonDecode(responseFechas.body);
-          final fechas = dataFechas['fechas_horas'] as List<dynamic>?;
-          if (fechas != null && fechas.isNotEmpty) {
-            // Agrupar por fecha
-            final Map<String, List<Map<String, dynamic>>> agrupadas = {};
-            for (var f in fechas) {
-              final fecha = f['fecha'] ?? '';
-              if (!agrupadas.containsKey(fecha)) agrupadas[fecha] = [];
-              agrupadas[fecha]!.add(f);
+        final responseServicios = await http.get(urlServicios);
+        if (responseServicios.statusCode == 200) {
+          final dataServicios = jsonDecode(responseServicios.body);
+          final servicios = List<Map<String, dynamic>>.from(dataServicios['servicios'] ?? []);
+          // Filtrar servicios que coincidan con la categoría
+          final serviciosFiltrados = servicios.where((s) {
+            final nombre = (s['nombre'] ?? '').toString().toLowerCase();
+            return palabrasClave.any((kw) => nombre.contains(kw.toLowerCase()));
+          }).toList();
+          for (final servicio in serviciosFiltrados) {
+            final serviceId = servicio['service'];
+            if (storeId == null || serviceId == null) continue;
+            final urlFechas = Uri.parse('${Config.fechasUrl}?store=$storeId&service=$serviceId&n=1');
+            try {
+              final responseFechas = await http.get(urlFechas);
+              if (responseFechas.statusCode == 200 && responseFechas.body.isNotEmpty) {
+                final dataFechas = jsonDecode(responseFechas.body);
+                final fechas = dataFechas['fechas_horas'] as List<dynamic>?;
+                if (fechas != null && fechas.isNotEmpty) {
+                  // Agrupar por fecha
+                  final Map<String, List<Map<String, dynamic>>> agrupadas = {};
+                  for (var f in fechas) {
+                    final fecha = f['fecha'] ?? '';
+                    if (!agrupadas.containsKey(fecha)) agrupadas[fecha] = [];
+                    agrupadas[fecha]!.add(f);
+                  }
+                  setState(() {
+                    buscandoFavoritos = false;
+                    nombreEstacionEncontrada = nombreEstacion;
+                  });
+                  if (!mounted) return;
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => HorasDisponiblesScreen(
+                        fechasAgrupadas: agrupadas,
+                        nombreEstacion: nombreEstacion,
+                      ),
+                    ),
+                  );
+                  return;
+                }
+              }
+            } catch (e) {
+              debugPrint('Error al buscar fechas: $e');
             }
-            setState(() {
-              buscandoFavoritos = false;
-              nombreEstacionEncontrada = nombreEstacion;
-            });
-            if (!mounted) return;
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (context) => HorasDisponiblesScreen(
-                  fechasAgrupadas: agrupadas,
-                  nombreEstacion: nombreEstacion,
-                ),
-              ),
-            );
-            return;
-          } else {
-            debugPrint('No hay fechas para estación $storeId y servicio $serviceId');
           }
-        } else {
-          debugPrint('Respuesta no válida para fechas: status ${responseFechas.statusCode}, body: ${responseFechas.body}');
         }
       } catch (e) {
-        debugPrint('Error al buscar en favoritos: $e');
+        debugPrint('Error al buscar servicios: $e');
       }
     }
     setState(() { buscandoFavoritos = false; });
@@ -628,7 +614,7 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
         elevation: 4,
         actions: [
           IconButton(
-            icon: const Icon(Icons.favorite),
+            icon: const Icon(Icons.favorite, color: Colors.white),
             tooltip: 'Gestionar favoritos',
             onPressed: () async {
               await Navigator.push(
@@ -641,174 +627,186 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
           ),
         ],
       ),
-      body: Container(
-        width: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Colors.white, Color(0xFFE3D7FF)],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            cargandoEstaciones
-                ? Column(
-                    children: [
-                      const CircularProgressIndicator(),
-                      const SizedBox(height: 12),
-                      const Text(
-                        'Cargando estaciones, por favor espera...',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.deepPurple,
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-                    ],
-                  )
-                : Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                    child: DropdownButton<dynamic>(
-                      isExpanded: true,
-                      hint: const Text('Selecciona estación'),
-                      value: estacionSeleccionada,
-                      items: estaciones.map((e) {
-                        return DropdownMenuItem(
-                          value: e,
-                          child: Text(
-                            '${e['provincia'] ?? ''} - ${e['nombre'] ?? ''} (${e['tipo'] ?? ''})',
-                          ),
-                        );
-                      }).toList(),
-                      onChanged: (value) async {
-                        setState(() {
-                          estacionSeleccionada = value;
-                        });
-                        await cargarServiciosDisponibles();
-                      },
-                    ),
-                  ),
-            const SizedBox(height: 16),
-            Stack(
+      body: Stack(
+        children: [
+          Container(
+            width: double.infinity,
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Colors.white, Color(0xFFE3D7FF)],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+              ),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.pink,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 32,
-                      vertical: 16,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  icon: const Icon(Icons.favorite, color: Colors.white),
-                  label: Text(
-                    buscandoFavoritos
-                        ? 'Buscando fechas disponibles entre las estaciones favoritas...'
-                        : 'Buscar en favoritos',
-                    style: const TextStyle(color: Colors.white, fontSize: 18),
-                  ),
-                  onPressed: buscandoFavoritos ? null : buscarPrimeraFechaFavoritos,
-                ),
-                if (buscandoFavoritos)
-                  Positioned.fill(
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: Padding(
-                        padding: const EdgeInsets.only(right: 24.0),
-                        child: SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                cargandoEstaciones
+                    ? Column(
+                        children: [
+                          const CircularProgressIndicator(),
+                          const SizedBox(height: 12),
+                          const Text(
+                            'Cargando estaciones, por favor espera...',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.deepPurple,
+                              fontStyle: FontStyle.italic,
+                            ),
                           ),
+                        ],
+                      )
+                    : Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                        child: DropdownButton<dynamic>(
+                          isExpanded: true,
+                          hint: const Text('Selecciona estación'),
+                          value: estacionSeleccionada,
+                          items: estaciones.map((e) {
+                            return DropdownMenuItem(
+                              value: e,
+                              child: Text(
+                                '${e['provincia'] ?? ''} - ${e['nombre'] ?? ''} (${e['tipo'] ?? ''})',
+                              ),
+                            );
+                          }).toList(),
+                          onChanged: (value) async {
+                            setState(() {
+                              estacionSeleccionada = value;
+                            });
+                            await cargarServiciosDisponibles();
+                          },
                         ),
+                      ),
+                const SizedBox(height: 16),
+                if (buscandoFavoritos)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                    child: Text(
+                      'Buscando fechas entre las estaciones favoritas...',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.deepPurple,
+                        fontStyle: FontStyle.italic,
                       ),
                     ),
                   ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 32.0),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.pink,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 32,
+                          vertical: 16,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      icon: const Icon(Icons.favorite, color: Colors.white),
+                      label: const Text(
+                        'Buscar en favoritos',
+                        style: TextStyle(color: Colors.white, fontSize: 18),
+                      ),
+                      onPressed: buscandoFavoritos ? null : buscarPrimeraFechaFavoritos,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                estacionSeleccionada == null
+                    ? const SizedBox.shrink()
+                    : Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                        child: DropdownButton<dynamic>(
+                          isExpanded: true,
+                          hint: const Text('Selecciona servicio'),
+                          value: servicioSeleccionado,
+                          items: serviciosDisponibles.map((t) {
+                            return DropdownMenuItem(
+                              value: t,
+                              child: Text(t['nombre']),
+                            );
+                          }).toList(),
+                          onChanged: (value) {
+                            setState(() {
+                              servicioSeleccionado = value;
+                            });
+                          },
+                        ),
+                      ),
+                const SizedBox(height: 16),
+                // Mostrar mensaje informativo mientras se carga
+                if (cargandoFechas)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                    child: Text(
+                      'Consultando disponibilidad en tiempo real...',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.deepPurple,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 32.0),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: cargandoFechas
+                            ? Colors.grey
+                            : Colors.deepPurple,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 32,
+                          vertical: 16,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      icon: cargandoFechas
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          : const Icon(Icons.search, color: Colors.white),
+                      label: Text(
+                        cargandoFechas ? 'Buscando fechas...' : 'Buscar fechas',
+                        style: const TextStyle(color: Colors.white, fontSize: 18),
+                      ),
+                      onPressed: cargandoFechas ? null : buscarFechas,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 32),
+                // El banner se elimina de aquí
               ],
             ),
-            const SizedBox(height: 16),
-            estacionSeleccionada == null
-                ? const SizedBox.shrink()
-                : Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                    child: DropdownButton<dynamic>(
-                      isExpanded: true,
-                      hint: const Text('Selecciona servicio'),
-                      value: servicioSeleccionado,
-                      items: serviciosDisponibles.map((t) {
-                        return DropdownMenuItem(
-                          value: t,
-                          child: Text(t['nombre']),
-                        );
-                      }).toList(),
-                      onChanged: (value) {
-                        setState(() {
-                          servicioSeleccionado = value;
-                        });
-                      },
-                    ),
-                  ),
-            const SizedBox(height: 16),
-            // Mostrar mensaje informativo mientras se carga
-            if (cargandoFechas)
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                child: Text(
-                  'Consultando disponibilidad en tiempo real...',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.deepPurple,
-                    fontStyle: FontStyle.italic,
-                  ),
+          ),
+          if (_isBannerAdReady && _bannerAd != null)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 24, // margen para no tapar la barra del sistema
+                child: Container(
+                  width: _bannerAd!.size.width.toDouble(),
+                  height: _bannerAd!.size.height.toDouble(),
+                  alignment: Alignment.center,
+                  child: AdWidget(ad: _bannerAd!),
                 ),
               ),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: cargandoFechas
-                    ? Colors.grey
-                    : Colors.deepPurple,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 32,
-                  vertical: 16,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              icon: cargandoFechas
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                      ),
-                    )
-                  : const Icon(Icons.search, color: Colors.white),
-              label: Text(
-                cargandoFechas ? 'Buscando fechas...' : 'Buscar fechas',
-                style: const TextStyle(color: Colors.white, fontSize: 18),
-              ),
-              onPressed: cargandoFechas ? null : buscarFechas,
-            ),
-            const SizedBox(height: 32),
-            if (_isBannerAdReady && _bannerAd != null)
-              Container(
-                width: _bannerAd!.size.width.toDouble(),
-                height: _bannerAd!.size.height.toDouble(),
-                alignment: Alignment.center,
-                child: AdWidget(ad: _bannerAd!),
-              ),
-          ],
-        ),
+        ],
       ),
     );
   }
