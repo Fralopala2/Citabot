@@ -4,8 +4,11 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:http/http.dart' as http;
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'horas_disponibles_screen.dart';
 import 'config.dart';
+import 'favoritos_screen.dart';
+import 'seleccionar_servicio_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -318,6 +321,144 @@ class ITVCitaScreen extends StatefulWidget {
 }
 
 class _ITVCitaScreenState extends State<ITVCitaScreen> {
+  Future<List<String>> _getFavoritos() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getStringList('favoritos') ?? [];
+  }
+
+  bool buscandoFavoritos = false;
+  String? nombreEstacionEncontrada;
+  Future<void> buscarPrimeraFechaFavoritos() async {
+    setState(() {
+      buscandoFavoritos = true;
+      nombreEstacionEncontrada = null;
+    });
+    final favoritos = await _getFavoritos();
+    if (favoritos.isEmpty) {
+      setState(() { buscandoFavoritos = false; });
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (context) => const AlertDialog(
+          title: Text('Favoritos'),
+          content: Text('No tienes estaciones favoritas seleccionadas.'),
+        ),
+      );
+      return;
+    }
+    // 1. Obtener todos los servicios disponibles en las estaciones favoritas
+    Set<String> idsServiciosUnicos = {};
+    List<Map<String, dynamic>> serviciosUnicos = [];
+    for (final favId in favoritos) {
+      final estacion = estaciones.firstWhere(
+        (e) => e['store_id'].toString() == favId,
+        orElse: () => null,
+      );
+      if (estacion == null) continue;
+      final urlServicios = Uri.parse('${Config.serviciosUrl}?store_id=${estacion['store_id']}');
+      try {
+        final responseServicios = await http.get(urlServicios);
+        if (responseServicios.statusCode == 200) {
+          final dataServicios = jsonDecode(responseServicios.body);
+          final servicios = List<Map<String, dynamic>>.from(dataServicios['servicios'] ?? []);
+          for (final s in servicios) {
+            final id = s['service'].toString();
+            if (!idsServiciosUnicos.contains(id)) {
+              idsServiciosUnicos.add(id);
+              serviciosUnicos.add(s);
+            }
+          }
+        }
+      } catch (_) {}
+    }
+    setState(() { buscandoFavoritos = false; });
+    if (serviciosUnicos.isEmpty) {
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (context) => const AlertDialog(
+          title: Text('Servicios'),
+          content: Text('No se encontraron servicios disponibles en tus estaciones favoritas.'),
+        ),
+      );
+      return;
+    }
+    // 2. Seleccionar el servicio
+    final servicioSeleccionado = await Navigator.push<Map<String, dynamic>>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => SeleccionarServicioScreen(
+          servicios: serviciosUnicos,
+        ),
+      ),
+    );
+    if (!mounted || servicioSeleccionado == null) return;
+    setState(() { buscandoFavoritos = true; });
+    // 3. Buscar la primera estación favorita con fechas disponibles para ese servicio
+    for (final favId in favoritos) {
+      final estacion = estaciones.firstWhere(
+        (e) => e['store_id']?.toString() == favId,
+        orElse: () => null,
+      );
+      if (estacion == null) {
+        debugPrint('Estación null para favId: $favId');
+        continue;
+      }
+      final storeId = estacion['store_id']?.toString();
+      final nombreEstacion = '${estacion['provincia'] ?? ''} - ${estacion['nombre'] ?? ''} (${estacion['tipo'] ?? ''})';
+      final serviceId = servicioSeleccionado['service'];
+      if (storeId == null || serviceId == null) {
+        debugPrint('storeId o serviceId null. storeId: $storeId, serviceId: $serviceId');
+        continue;
+      }
+      final urlFechas = Uri.parse('${Config.fechasUrl}?store=$storeId&service=$serviceId&n=1');
+      try {
+        final responseFechas = await http.get(urlFechas);
+        if (responseFechas.statusCode == 200 && responseFechas.body.isNotEmpty) {
+          final dataFechas = jsonDecode(responseFechas.body);
+          final fechas = dataFechas['fechas_horas'] as List<dynamic>?;
+          if (fechas != null && fechas.isNotEmpty) {
+            // Agrupar por fecha
+            final Map<String, List<Map<String, dynamic>>> agrupadas = {};
+            for (var f in fechas) {
+              final fecha = f['fecha'] ?? '';
+              if (!agrupadas.containsKey(fecha)) agrupadas[fecha] = [];
+              agrupadas[fecha]!.add(f);
+            }
+            setState(() {
+              buscandoFavoritos = false;
+              nombreEstacionEncontrada = nombreEstacion;
+            });
+            if (!mounted) return;
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => HorasDisponiblesScreen(
+                  fechasAgrupadas: agrupadas,
+                  nombreEstacion: nombreEstacion,
+                ),
+              ),
+            );
+            return;
+          } else {
+            debugPrint('No hay fechas para estación $storeId y servicio $serviceId');
+          }
+        } else {
+          debugPrint('Respuesta no válida para fechas: status ${responseFechas.statusCode}, body: ${responseFechas.body}');
+        }
+      } catch (e) {
+        debugPrint('Error al buscar en favoritos: $e');
+      }
+    }
+    setState(() { buscandoFavoritos = false; });
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (context) => const AlertDialog(
+        title: Text('Fechas disponibles'),
+        content: Text('No hay fechas u horas disponibles en tus estaciones favoritas para ese servicio.'),
+      ),
+    );
+  }
   BannerAd? _bannerAd;
   bool _isBannerAdReady = false;
   List<dynamic> estaciones = [];
@@ -485,6 +626,20 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
         title: const Text('Cita ITV'),
         centerTitle: true,
         elevation: 4,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.favorite),
+            tooltip: 'Gestionar favoritos',
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => FavoritosScreen(estaciones: estaciones),
+                ),
+              );
+            },
+          ),
+        ],
       ),
       body: Container(
         width: double.infinity,
@@ -536,6 +691,48 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
                       },
                     ),
                   ),
+            const SizedBox(height: 16),
+            Stack(
+              children: [
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.pink,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 32,
+                      vertical: 16,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  icon: const Icon(Icons.favorite, color: Colors.white),
+                  label: Text(
+                    buscandoFavoritos
+                        ? 'Buscando fechas disponibles entre las estaciones favoritas...'
+                        : 'Buscar en favoritos',
+                    style: const TextStyle(color: Colors.white, fontSize: 18),
+                  ),
+                  onPressed: buscandoFavoritos ? null : buscarPrimeraFechaFavoritos,
+                ),
+                if (buscandoFavoritos)
+                  Positioned.fill(
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 24.0),
+                        child: SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
             const SizedBox(height: 16),
             estacionSeleccionada == null
                 ? const SizedBox.shrink()
