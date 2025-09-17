@@ -4,7 +4,8 @@ import 'package:flutter/material.dart';
 class HorasDisponiblesScreen extends StatelessWidget {
   final Map<String, List<Map<String, dynamic>>> fechasAgrupadas;
   final String? nombreEstacion;
-  const HorasDisponiblesScreen({super.key, required this.fechasAgrupadas, this.nombreEstacion});
+  final bool mostrarPrecio;
+  const HorasDisponiblesScreen({super.key, required this.fechasAgrupadas, this.nombreEstacion, this.mostrarPrecio = true});
 
   @override
   Widget build(BuildContext context) {
@@ -50,7 +51,9 @@ class HorasDisponiblesScreen extends StatelessWidget {
                     ...horas.map(
                       (h) => ListTile(
                         title: Text(h['hora'] ?? ''),
-                        subtitle: Text('Precio: ${h['precio'] ?? ''}€'),
+                        subtitle: mostrarPrecio && h['precio'] != null && h['precio'].toString().isNotEmpty
+                            ? Text('Precio: ${h['precio']}€')
+                            : null,
                       ),
                     ),
                   ],

@@ -8,8 +8,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'horas_disponibles_screen.dart';
 import 'config.dart';
 import 'favoritos_screen.dart';
-import 'seleccionar_servicio_screen.dart';
 import 'categorias_servicio.dart';
+import 'seleccionar_servicio_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -47,21 +47,19 @@ class _MyHomePageState extends State<MyHomePage> {
   bool _isBannerAdReady = false;
   void mostrarErrorServicios(BuildContext context) {
     if (!mounted) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Error'),
-          content: const Text('No se pudieron obtener los servicios para esta estación. Intenta de nuevo más tarde.'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cerrar'),
-            ),
-          ],
-        ),
-      );
-    });
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Error'),
+        content: const Text('No se pudieron obtener los servicios para esta estación. Intenta de nuevo más tarde.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cerrar'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -340,55 +338,44 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
   bool buscandoFavoritos = false;
   String? nombreEstacionEncontrada;
   Future<void> buscarPrimeraFechaFavoritos() async {
-    setState(() {
-      buscandoFavoritos = true;
-      nombreEstacionEncontrada = null;
-    });
+    // 1. Seleccionar servicio unificado antes de buscar
     final favoritos = await _getFavoritos();
     if (favoritos.isEmpty) {
-      setState(() { buscandoFavoritos = false; });
-      if (!mounted) return;
       showDialog(
         context: context,
         builder: (context) => const AlertDialog(
-          title: Text('Favoritos'),
-          content: Text('No tienes estaciones favoritas seleccionadas.'),
+          title: Text('Favoritos no seleccionados'),
+          content: Text('Selecciona al menos una estación favorita.'),
         ),
       );
       return;
     }
-    // 1. Mostrar categorías unificadas
-    final categoriaSeleccionada = await Navigator.push<String>(
-      context,
-      MaterialPageRoute(
-        builder: (context) => SeleccionarServicioScreen(
-          servicios: categoriasServicios.keys.map((k) => {'nombre': k}).toList(),
-        ),
+    // Mostrar pantalla de selección de categoría unificada
+    final categoriaSeleccionada = await showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Selecciona tipo de servicio'),
+        children: categoriasServicios.keys.map((cat) => SimpleDialogOption(
+          child: Text(cat),
+          onPressed: () => Navigator.pop(context, cat),
+        )).toList(),
       ),
     );
-    if (!mounted || categoriaSeleccionada == null) return;
-    setState(() { buscandoFavoritos = true; });
+    if (categoriaSeleccionada == null) return;
+    setState(() {
+      buscandoFavoritos = true;
+    });
     final palabrasClave = categoriasServicios[categoriaSeleccionada] ?? [];
-    // 2. Buscar la primera estación favorita con fechas disponibles para esa categoría
-    for (final favId in favoritos) {
-      final estacion = estaciones.firstWhere(
-        (e) => e['store_id']?.toString() == favId,
-        orElse: () => null,
-      );
-      if (estacion == null) {
-        debugPrint('Estación null para favId: $favId');
-        continue;
-      }
+    // Buscar en cada estación favorita
+    for (final estacion in estaciones.where((e) => favoritos.contains(e['store_id'].toString()))) {
       final storeId = estacion['store_id']?.toString();
       final nombreEstacion = '${estacion['provincia'] ?? ''} - ${estacion['nombre'] ?? ''} (${estacion['tipo'] ?? ''})';
-      // Obtener servicios de la estación
       final urlServicios = Uri.parse('${Config.serviciosUrl}?store_id=$storeId');
       try {
         final responseServicios = await http.get(urlServicios);
         if (responseServicios.statusCode == 200) {
           final dataServicios = jsonDecode(responseServicios.body);
           final servicios = List<Map<String, dynamic>>.from(dataServicios['servicios'] ?? []);
-          // Filtrar servicios que coincidan con la categoría
           final serviciosFiltrados = servicios.where((s) {
             final nombre = (s['nombre'] ?? '').toString().toLowerCase();
             return palabrasClave.any((kw) => nombre.contains(kw.toLowerCase()));
@@ -420,6 +407,7 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
                       builder: (context) => HorasDisponiblesScreen(
                         fechasAgrupadas: agrupadas,
                         nombreEstacion: nombreEstacion,
+                        mostrarPrecio: false,
                       ),
                     ),
                   );
@@ -680,13 +668,36 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
                         ),
                       ),
                 const SizedBox(height: 16),
+                estacionSeleccionada == null
+                    ? const SizedBox.shrink()
+                    : Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                        child: DropdownButton<dynamic>(
+                          isExpanded: true,
+                          hint: const Text('Selecciona servicio'),
+                          value: servicioSeleccionado,
+                          items: serviciosDisponibles.map((t) {
+                            return DropdownMenuItem(
+                              value: t,
+                              child: Text(t['nombre']),
+                            );
+                          }).toList(),
+                          onChanged: (value) {
+                            setState(() {
+                              servicioSeleccionado = value;
+                            });
+                          },
+                        ),
+                      ),
+                const SizedBox(height: 16),
+                // Botón Buscar en favoritos SIEMPRE debajo del dropdown de servicios
                 if (buscandoFavoritos)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
                     child: Text(
                       'Buscando fechas entre las estaciones favoritas...',
                       textAlign: TextAlign.center,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 14,
                         color: Colors.deepPurple,
                         fontStyle: FontStyle.italic,
@@ -717,28 +728,6 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
-                estacionSeleccionada == null
-                    ? const SizedBox.shrink()
-                    : Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                        child: DropdownButton<dynamic>(
-                          isExpanded: true,
-                          hint: const Text('Selecciona servicio'),
-                          value: servicioSeleccionado,
-                          items: serviciosDisponibles.map((t) {
-                            return DropdownMenuItem(
-                              value: t,
-                              child: Text(t['nombre']),
-                            );
-                          }).toList(),
-                          onChanged: (value) {
-                            setState(() {
-                              servicioSeleccionado = value;
-                            });
-                          },
-                        ),
-                      ),
                 const SizedBox(height: 16),
                 // Mostrar mensaje informativo mientras se carga
                 if (cargandoFechas)

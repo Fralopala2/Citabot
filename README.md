@@ -127,6 +127,15 @@ REQUEST_DELAY=3.0
 - FCM token is sent automatically to the backend when the app starts
 - Modular backend design allows for easy expansion and maintenance
 
+## Favorites and Direct Search Among Favorites
+
+- Save and manage your favorite ITV stations for quick access.
+- Group multiple stations as favorites and search for the first available date and time across all your selected favorites in a single step.
+- After selecting your favorite stations, you can perform a direct search to find the earliest available appointment among them, without having to check each station individually.
+- The app will show you the available times for the first station with open slots, streamlining the booking process for users who monitor several locations.
+- Favorites are stored locally on your device for fast and persistent access.
+- The UI provides a dedicated screen for managing favorites and launching direct searches among them.
+
 ## License
 
 This project is licensed under the [Creative Commons Attribution-NonCommercial 4.0 International License](https://creativecommons.org/licenses/by-nc/4.0/).
