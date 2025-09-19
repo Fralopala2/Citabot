@@ -25,6 +25,18 @@ class HorasDisponiblesScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          // Logo ITV grande y centrado
+          Padding(
+            padding: const EdgeInsets.only(top: 8.0, bottom: 16.0),
+            child: Center(
+              child: Image.asset(
+                'assets/images/logoITV.png',
+                width: 300,
+                height: 170,
+                fit: BoxFit.contain,
+              ),
+            ),
+          ),
           if (nombreEstacion != null)
             Padding(
               padding: const EdgeInsets.only(bottom: 12.0),

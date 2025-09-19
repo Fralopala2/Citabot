@@ -61,6 +61,8 @@ flutter:
   uses-material-design: true
   assets:
     - assets/images/citabot.png
+    - assets/images/logoITV.png
+
   # Elimino soporte para otras plataformas
   # android_only: true
 

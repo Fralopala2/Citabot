@@ -245,16 +245,6 @@ class _MyHomePageState extends State<MyHomePage> {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Imagen decorativa ITV
-                Padding(
-                  padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
-                  child: Image.asset(
-                    'assets/images/logoITV.png',
-                    width: 220,
-                    height: 120,
-                    fit: BoxFit.contain,
-                  ),
-                ),
                 // Logo Citabot
                 Image.asset('assets/images/citabot.png', width: 120, height: 120),
                 const SizedBox(height: 16),
