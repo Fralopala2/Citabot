@@ -132,10 +132,12 @@ class _MyHomePageState extends State<MyHomePage> {
           );
         } else {
           tiposVehiculo = [];
+          if (!mounted) return;
           mostrarErrorServicios(context);
         }
       } catch (e) {
         tiposVehiculo = [];
+        if (!mounted) return;
         mostrarErrorServicios(context);
       }
     }

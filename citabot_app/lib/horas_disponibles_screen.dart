@@ -89,7 +89,7 @@ class HorasDisponiblesScreen extends StatelessWidget {
                 ),
               ),
             );
-          }).toList(),
+          }),
         ],
       ),
     );
