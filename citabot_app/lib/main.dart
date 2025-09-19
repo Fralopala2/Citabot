@@ -378,9 +378,11 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
     });
     final palabrasClave = categoriasServicios[categoriaSeleccionada] ?? [];
     // Depuración: mostrar favoritos y estaciones filtradas
-    debugPrint('Favoritos seleccionados: $favoritos');
-    final estacionesFiltradas = estaciones.where((e) => favoritos.contains(e['store_id'].toString())).toList();
-    debugPrint('Estaciones a consultar: ${estacionesFiltradas.map((e) => e['store_id']).toList()}');
+  debugPrint('Favoritos seleccionados (raw): $favoritos');
+  // Forzar comparación como string y mostrar IDs de estaciones
+  final favoritosSet = favoritos.map((f) => f.toString()).toSet();
+  final estacionesFiltradas = estaciones.where((e) => favoritosSet.contains(e['store_id'].toString())).toList();
+  debugPrint('Estaciones filtradas (solo favoritas): ${estacionesFiltradas.map((e) => e['store_id']).toList()}');
 
     // Buscar en todas las estaciones favoritas seleccionadas y encontrar la primera fecha global
     DateTime? fechaMinima;
@@ -631,6 +633,7 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
         title: const Text('Cita ITV'),
         centerTitle: true,
         elevation: 4,
+        iconTheme: const IconThemeData(color: Colors.white),
         actions: [
           IconButton(
             icon: const Icon(Icons.favorite, color: Colors.white),
