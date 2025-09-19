@@ -656,6 +656,18 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
+                // Logo ITV grande y centrado
+                Padding(
+                  padding: const EdgeInsets.only(top: 24.0, bottom: 16.0),
+                  child: Center(
+                    child: Image.asset(
+                      'assets/images/logoITV.png',
+                      width: 300,
+                      height: 170,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
                 cargandoEstaciones
                     ? Column(
                         children: [
