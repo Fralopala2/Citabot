@@ -367,8 +367,16 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
       buscandoFavoritos = true;
     });
     final palabrasClave = categoriasServicios[categoriaSeleccionada] ?? [];
-    // Buscar en cada estación favorita
-    for (final estacion in estaciones.where((e) => favoritos.contains(e['store_id'].toString()))) {
+    // Depuración: mostrar favoritos y estaciones filtradas
+    debugPrint('Favoritos seleccionados: $favoritos');
+    final estacionesFiltradas = estaciones.where((e) => favoritos.contains(e['store_id'].toString())).toList();
+    debugPrint('Estaciones a consultar: ${estacionesFiltradas.map((e) => e['store_id']).toList()}');
+
+    // Buscar en todas las estaciones favoritas seleccionadas y encontrar la primera fecha global
+    DateTime? fechaMinima;
+    Map<String, List<Map<String, dynamic>>>? agrupadasMinima;
+    String? nombreEstacionMinima;
+    for (final estacion in estacionesFiltradas) {
       final storeId = estacion['store_id']?.toString();
       final nombreEstacion = '${estacion['provincia'] ?? ''} - ${estacion['nombre'] ?? ''} (${estacion['tipo'] ?? ''})';
       final urlServicios = Uri.parse('${Config.serviciosUrl}?store_id=$storeId');
@@ -377,14 +385,16 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
         if (responseServicios.statusCode == 200) {
           final dataServicios = jsonDecode(responseServicios.body);
           final servicios = List<Map<String, dynamic>>.from(dataServicios['servicios'] ?? []);
-          final serviciosFiltrados = servicios.where((s) {
-            final nombre = (s['nombre'] ?? '').toString().toLowerCase();
-            return palabrasClave.any((kw) => nombre.contains(kw.toLowerCase()));
-          }).toList();
+            // Solo buscar servicios equivalentes a la categoría seleccionada
+            final serviciosFiltrados = servicios.where((s) {
+              final nombre = (s['nombre'] ?? '').toString().toLowerCase();
+              return palabrasClave.any((kw) => nombre.contains(kw.toLowerCase()));
+            }).toList();
+            debugPrint('Estación $storeId ($nombreEstacion) - Servicios equivalentes: ${serviciosFiltrados.map((s) => s['nombre']).toList()}');
           for (final servicio in serviciosFiltrados) {
             final serviceId = servicio['service'];
             if (storeId == null || serviceId == null) continue;
-            final urlFechas = Uri.parse('${Config.fechasUrl}?store=$storeId&service=$serviceId&n=1');
+            final urlFechas = Uri.parse('${Config.fechasUrl}?store=$storeId&service=$serviceId&n=10');
             try {
               final responseFechas = await http.get(urlFechas);
               if (responseFechas.statusCode == 200 && responseFechas.body.isNotEmpty) {
@@ -398,21 +408,17 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
                     if (!agrupadas.containsKey(fecha)) agrupadas[fecha] = [];
                     agrupadas[fecha]!.add(f);
                   }
-                  setState(() {
-                    buscandoFavoritos = false;
-                    nombreEstacionEncontrada = nombreEstacion;
-                  });
-                  if (!mounted) return;
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => HorasDisponiblesScreen(
-                        fechasAgrupadas: agrupadas,
-                        nombreEstacion: nombreEstacion,
-                        mostrarPrecio: false,
-                      ),
-                    ),
-                  );
-                  return;
+                  // Buscar la fecha más próxima de esta estación
+                  for (final fechaStr in agrupadas.keys) {
+                    try {
+                      final dt = DateTime.parse(fechaStr);
+                      if (fechaMinima == null || dt.isBefore(fechaMinima)) {
+                        fechaMinima = dt;
+                        agrupadasMinima = {fechaStr: agrupadas[fechaStr]!};
+                        nombreEstacionMinima = nombreEstacion;
+                      }
+                    } catch (_) {}
+                  }
                 }
               }
             } catch (e) {
@@ -423,6 +429,20 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
       } catch (e) {
         debugPrint('Error al buscar servicios: $e');
       }
+    }
+    setState(() { buscandoFavoritos = false; });
+    if (agrupadasMinima != null && nombreEstacionMinima != null) {
+      if (!mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => HorasDisponiblesScreen(
+            fechasAgrupadas: agrupadasMinima!,
+            nombreEstacion: nombreEstacionMinima,
+            mostrarPrecio: false,
+          ),
+        ),
+      );
+      return;
     }
     setState(() { buscandoFavoritos = false; });
     if (!mounted) return;
@@ -720,7 +740,16 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      icon: const Icon(Icons.favorite, color: Colors.white),
+                      icon: buscandoFavoritos
+                          ? const SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          : const Icon(Icons.favorite, color: Colors.white),
                       label: const Text(
                         'Buscar en favoritos',
                         style: TextStyle(color: Colors.white, fontSize: 18),
