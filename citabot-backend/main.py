@@ -99,7 +99,7 @@ def detect_new_appointments(old_data, new_data, store, service):
                 })
     
     if new_appointments:
-        print(f"🎉 Detected {len(new_appointments)} new appointments for store {store}, service {service}")
+        print(f"Detected {len(new_appointments)} new appointments for store {store}, service {service}")
     
     return new_appointments
 
@@ -133,7 +133,7 @@ def background_cache_refresher():
                 keys = list(slots_cache.keys())
             
             if keys:
-                print(f"🔄 Refreshing cache for {len(keys)} station-service combinations...")
+                print(f"Refreshing cache for {len(keys)} station-service combinations...")
                 
                 for i, key in enumerate(keys):
                     try:
@@ -151,14 +151,14 @@ def background_cache_refresher():
                                 time.sleep(REQUEST_DELAY)
                                 
                     except Exception as e:
-                        print(f"   ❌ Error refreshing cache for {key}: {e}")
+                        print(f"   Error refreshing cache for {key}: {e}")
                 
-                print("✅ Cache refreshed completely")
+                print("Cache refreshed completely")
             else:
-                print("📭 No cache entries to refresh")
+                print("No cache entries to refresh")
                 
         except Exception as e:
-            print(f"❌ Error in background_cache_refresher: {e}")
+            print(f"Error in background_cache_refresher: {e}")
         
         # Wait for configured interval before next refresh
         time.sleep(BACKGROUND_REFRESH_INTERVAL)
@@ -231,16 +231,16 @@ def get_estaciones():
 @app.get("/itv/fechas")
 def get_fechas(store: str, service: str, n: int = 3):
     """Gets next available appointments for a station and service"""
-    print(f"🔍 Searching appointments for station {store}, service {service}")
+    print(f"Searching appointments for station {store}, service {service}")
     
     # Try to get from cache first
     cached = get_cached_slots(store, service)
     if cached:
-        print(f"📦 Returning {len(cached[:n])} appointments from cache")
+        print(f"Returning {len(cached[:n])} appointments from cache")
         return {"fechas_horas": cached[:n]}
     
     # If not in cache, get with concurrency control
-    print(f"🌐 No cache, getting fresh data...")
+    print(f"No cache, getting fresh data...")
     
     try:
         # Use semaphore to limit concurrent requests
@@ -249,11 +249,11 @@ def get_fechas(store: str, service: str, n: int = 3):
             fechas_horas = scraper.get_next_available_slots(store, service, "", n)
             set_cached_slots(store, service, fechas_horas)
             
-            print(f"✅ Got {len(fechas_horas)} new appointments")
+            print(f"Got {len(fechas_horas)} new appointments")
             return {"fechas_horas": fechas_horas}
             
     except Exception as e:
-        print(f"❌ Error getting appointments: {e}")
+        print(f"Error getting appointments: {e}")
         # Return empty array in case of error
         return {"fechas_horas": []}
 # Endpoint para estadísticas de notificaciones
