@@ -435,8 +435,15 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
               );
               if (responseFechas.statusCode == 200 &&
                   responseFechas.body.isNotEmpty) {
+                debugPrint('=== RESPONSE DEBUG ===');
+                debugPrint('URL: ${urlFechas.toString()}');
+                debugPrint('Status: ${responseFechas.statusCode}');
+                debugPrint('Body: ${responseFechas.body}');
+
                 final dataFechas = jsonDecode(responseFechas.body);
                 final fechas = dataFechas['fechas_horas'] as List<dynamic>?;
+                debugPrint('Fechas parsed: $fechas');
+
                 if (fechas != null && fechas.isNotEmpty) {
                   // Agrupar por fecha
                   final Map<String, List<Map<String, dynamic>>> agrupadas = {};
@@ -445,16 +452,30 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
                     if (!agrupadas.containsKey(fecha)) agrupadas[fecha] = [];
                     agrupadas[fecha]!.add(f);
                   }
-                  // Buscar la fecha más próxima de esta estación
+                  // Buscar la fecha más próxima de esta estación (solo fechas futuras)
+                  final hoy = DateTime.now();
                   for (final fechaStr in agrupadas.keys) {
                     try {
                       final dt = DateTime.parse(fechaStr);
+                      debugPrint('Evaluando fecha: $fechaStr -> $dt');
+
+                      // Solo considerar fechas de hoy en adelante
+                      if (dt.isBefore(DateTime(hoy.year, hoy.month, hoy.day))) {
+                        debugPrint('Fecha $fechaStr es del pasado, ignorando');
+                        continue;
+                      }
+
                       if (fechaMinima == null || dt.isBefore(fechaMinima)) {
+                        debugPrint(
+                          'Nueva fecha mínima: $fechaStr (anterior: $fechaMinima)',
+                        );
                         fechaMinima = dt;
                         agrupadasMinima = {fechaStr: agrupadas[fechaStr]!};
                         nombreEstacionMinima = nombreEstacion;
                       }
-                    } catch (_) {}
+                    } catch (e) {
+                      debugPrint('Error parsing fecha $fechaStr: $e');
+                    }
                   }
                 }
               }

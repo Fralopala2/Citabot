@@ -46,7 +46,7 @@ slots_cache_lock = threading.Lock()
 
 # More conservative cache configuration to avoid bans
 CACHE_TTL = 1800  # 30 minutes (more conservative)
-BACKGROUND_REFRESH_INTERVAL = 900  # 15 minutes between background updates
+BACKGROUND_REFRESH_INTERVAL = 1800  # 30 minutes between background updates
 MAX_CONCURRENT_REQUESTS = 2  # Maximum 2 simultaneous requests to scraper
 REQUEST_DELAY = 5  # 5 seconds between requests to be respectful
 
