@@ -52,7 +52,9 @@ class _MyHomePageState extends State<MyHomePage> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Error'),
-        content: const Text('No se pudieron obtener los servicios para esta estación. Intenta de nuevo más tarde.'),
+        content: const Text(
+          'No se pudieron obtener los servicios para esta estación. Intenta de nuevo más tarde.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
@@ -92,6 +94,7 @@ class _MyHomePageState extends State<MyHomePage> {
     _bannerAd?.dispose();
     super.dispose();
   }
+
   List<dynamic> estaciones = [];
   List<Map<String, dynamic>> tiposVehiculo = [];
   dynamic estacionSeleccionada;
@@ -144,7 +147,6 @@ class _MyHomePageState extends State<MyHomePage> {
     setState(() {
       tipoSeleccionado = null;
     });
-
   }
 
   Future<void> buscarFechas() async {
@@ -190,7 +192,6 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   String? _token;
-
 
   Future<void> _getTokenAndSend() async {
     final token = await FirebaseMessaging.instance.getToken();
@@ -246,7 +247,11 @@ class _MyHomePageState extends State<MyHomePage> {
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 // Logo Citabot
-                Image.asset('assets/images/citabot.png', width: 120, height: 120),
+                Image.asset(
+                  'assets/images/citabot.png',
+                  width: 120,
+                  height: 120,
+                ),
                 const SizedBox(height: 16),
                 const Text(
                   'Bienvenido a Citabot',
@@ -343,6 +348,8 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
   Future<void> buscarPrimeraFechaFavoritos() async {
     // 1. Seleccionar servicio unificado antes de buscar
     final favoritos = await _getFavoritos();
+    if (!mounted) return;
+
     if (favoritos.isEmpty) {
       showDialog(
         context: context,
@@ -358,23 +365,32 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
       context: context,
       builder: (context) => SimpleDialog(
         title: const Text('Selecciona tipo de servicio'),
-        children: categoriasServicios.keys.map((cat) => SimpleDialogOption(
-          child: Text(cat),
-          onPressed: () => Navigator.pop(context, cat),
-        )).toList(),
+        children: categoriasServicios.keys
+            .map(
+              (cat) => SimpleDialogOption(
+                child: Text(cat),
+                onPressed: () => Navigator.pop(context, cat),
+              ),
+            )
+            .toList(),
       ),
     );
+    if (!mounted) return;
     if (categoriaSeleccionada == null) return;
     setState(() {
       buscandoFavoritos = true;
     });
     final palabrasClave = categoriasServicios[categoriaSeleccionada] ?? [];
     // Depuración: mostrar favoritos y estaciones filtradas
-  debugPrint('Favoritos seleccionados (raw): $favoritos');
-  // Forzar comparación como string y mostrar IDs de estaciones
-  final favoritosSet = favoritos.map((f) => f.toString()).toSet();
-  final estacionesFiltradas = estaciones.where((e) => favoritosSet.contains(e['store_id'].toString())).toList();
-  debugPrint('Estaciones filtradas (solo favoritas): ${estacionesFiltradas.map((e) => e['store_id']).toList()}');
+    debugPrint('Favoritos seleccionados (raw): $favoritos');
+    // Forzar comparación como string y mostrar IDs de estaciones
+    final favoritosSet = favoritos.map((f) => f.toString()).toSet();
+    final estacionesFiltradas = estaciones
+        .where((e) => favoritosSet.contains(e['store_id'].toString()))
+        .toList();
+    debugPrint(
+      'Estaciones filtradas (solo favoritas): ${estacionesFiltradas.map((e) => e['store_id']).toList()}',
+    );
 
     // Buscar en todas las estaciones favoritas seleccionadas y encontrar la primera fecha global
     DateTime? fechaMinima;
@@ -382,26 +398,36 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
     String? nombreEstacionMinima;
     for (final estacion in estacionesFiltradas) {
       final storeId = estacion['store_id']?.toString();
-      final nombreEstacion = '${estacion['provincia'] ?? ''} - ${estacion['nombre'] ?? ''} (${estacion['tipo'] ?? ''})';
-      final urlServicios = Uri.parse('${Config.serviciosUrl}?store_id=$storeId');
+      final nombreEstacion =
+          '${estacion['provincia'] ?? ''} - ${estacion['nombre'] ?? ''} (${estacion['tipo'] ?? ''})';
+      final urlServicios = Uri.parse(
+        '${Config.serviciosUrl}?store_id=$storeId',
+      );
       try {
         final responseServicios = await http.get(urlServicios);
         if (responseServicios.statusCode == 200) {
           final dataServicios = jsonDecode(responseServicios.body);
-          final servicios = List<Map<String, dynamic>>.from(dataServicios['servicios'] ?? []);
-            // Solo buscar servicios equivalentes a la categoría seleccionada
-            final serviciosFiltrados = servicios.where((s) {
-              final nombre = (s['nombre'] ?? '').toString().toLowerCase();
-              return palabrasClave.any((kw) => nombre.contains(kw.toLowerCase()));
-            }).toList();
-            debugPrint('Estación $storeId ($nombreEstacion) - Servicios equivalentes: ${serviciosFiltrados.map((s) => s['nombre']).toList()}');
+          final servicios = List<Map<String, dynamic>>.from(
+            dataServicios['servicios'] ?? [],
+          );
+          // Solo buscar servicios equivalentes a la categoría seleccionada
+          final serviciosFiltrados = servicios.where((s) {
+            final nombre = (s['nombre'] ?? '').toString().toLowerCase();
+            return palabrasClave.any((kw) => nombre.contains(kw.toLowerCase()));
+          }).toList();
+          debugPrint(
+            'Estación $storeId ($nombreEstacion) - Servicios equivalentes: ${serviciosFiltrados.map((s) => s['nombre']).toList()}',
+          );
           for (final servicio in serviciosFiltrados) {
             final serviceId = servicio['service'];
             if (storeId == null || serviceId == null) continue;
-            final urlFechas = Uri.parse('${Config.fechasUrl}?store=$storeId&service=$serviceId&n=10');
+            final urlFechas = Uri.parse(
+              '${Config.fechasUrl}?store=$storeId&service=$serviceId&n=10',
+            );
             try {
               final responseFechas = await http.get(urlFechas);
-              if (responseFechas.statusCode == 200 && responseFechas.body.isNotEmpty) {
+              if (responseFechas.statusCode == 200 &&
+                  responseFechas.body.isNotEmpty) {
                 final dataFechas = jsonDecode(responseFechas.body);
                 final fechas = dataFechas['fechas_horas'] as List<dynamic>?;
                 if (fechas != null && fechas.isNotEmpty) {
@@ -434,7 +460,9 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
         debugPrint('Error al buscar servicios: $e');
       }
     }
-    setState(() { buscandoFavoritos = false; });
+    setState(() {
+      buscandoFavoritos = false;
+    });
     if (agrupadasMinima != null && nombreEstacionMinima != null) {
       if (!mounted) return;
       Navigator.of(context).push(
@@ -448,16 +476,21 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
       );
       return;
     }
-    setState(() { buscandoFavoritos = false; });
+    setState(() {
+      buscandoFavoritos = false;
+    });
     if (!mounted) return;
     showDialog(
       context: context,
       builder: (context) => const AlertDialog(
         title: Text('Fechas disponibles'),
-        content: Text('No hay fechas u horas disponibles en tus estaciones favoritas para ese servicio.'),
+        content: Text(
+          'No hay fechas u horas disponibles en tus estaciones favoritas para ese servicio.',
+        ),
       ),
     );
   }
+
   BannerAd? _bannerAd;
   bool _isBannerAdReady = false;
   List<dynamic> estaciones = [];
@@ -483,7 +516,9 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
         },
         onAdFailedToLoad: (ad, error) {
           ad.dispose();
-          debugPrint('Error al cargar banner (ITVCitaScreen): \\${error.message}');
+          debugPrint(
+            'Error al cargar banner (ITVCitaScreen): \\${error.message}',
+          );
         },
       ),
     )..load();
@@ -731,7 +766,10 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
                 // Botón Buscar en favoritos SIEMPRE debajo del dropdown de servicios
                 if (buscandoFavoritos)
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16.0,
+                      vertical: 8.0,
+                    ),
                     child: Text(
                       'Buscando fechas entre las estaciones favoritas...',
                       textAlign: TextAlign.center,
@@ -763,7 +801,9 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
                               height: 22,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2.5,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Colors.white,
+                                ),
                               ),
                             )
                           : const Icon(Icons.favorite, color: Colors.white),
@@ -771,7 +811,9 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
                         'Buscar en favoritos',
                         style: TextStyle(color: Colors.white, fontSize: 18),
                       ),
-                      onPressed: buscandoFavoritos ? null : buscarPrimeraFechaFavoritos,
+                      onPressed: buscandoFavoritos
+                          ? null
+                          : buscarPrimeraFechaFavoritos,
                     ),
                   ),
                 ),
@@ -779,7 +821,10 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
                 // Mostrar mensaje informativo mientras se carga
                 if (cargandoFechas)
                   const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 16.0,
+                      vertical: 8.0,
+                    ),
                     child: Text(
                       'Consultando disponibilidad en tiempo real...',
                       textAlign: TextAlign.center,
@@ -813,13 +858,18 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
                               height: 20,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Colors.white,
+                                ),
                               ),
                             )
                           : const Icon(Icons.search, color: Colors.white),
                       label: Text(
                         cargandoFechas ? 'Buscando fechas...' : 'Buscar fechas',
-                        style: const TextStyle(color: Colors.white, fontSize: 18),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                        ),
                       ),
                       onPressed: cargandoFechas ? null : buscarFechas,
                     ),
@@ -831,17 +881,17 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
             ),
           ),
           if (_isBannerAdReady && _bannerAd != null)
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 24, // margen para no tapar la barra del sistema
-                child: Container(
-                  width: _bannerAd!.size.width.toDouble(),
-                  height: _bannerAd!.size.height.toDouble(),
-                  alignment: Alignment.center,
-                  child: AdWidget(ad: _bannerAd!),
-                ),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 24, // margen para no tapar la barra del sistema
+              child: Container(
+                width: _bannerAd!.size.width.toDouble(),
+                height: _bannerAd!.size.height.toDouble(),
+                alignment: Alignment.center,
+                child: AdWidget(ad: _bannerAd!),
               ),
+            ),
         ],
       ),
     );

@@ -4,7 +4,7 @@ import time
 import os
 from fastapi import FastAPI, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
-from notifier import send_notification
+from notifier import register_device_token, send_new_appointment_notification, get_registered_tokens_count
 from scraper_sitval import SitValScraper
 
 
@@ -16,13 +16,28 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Configure CORS for production
+# Configure CORS for production - restricted to known domains
+allowed_origins = [
+    "https://citabot.onrender.com",  # Tu dominio de producción
+    "http://localhost:3000",         # Desarrollo web local
+    "http://127.0.0.1:3000",        # Desarrollo web local alternativo
+    # Agregar más dominios según necesites
+]
+
+# En desarrollo, permitir localhost
+if os.getenv("ENVIRONMENT") == "development":
+    allowed_origins.extend([
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+        "http://10.0.2.2:8000",  # Android emulator
+    ])
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify your app's domain
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST"],  # Solo métodos necesarios
+    allow_headers=["Content-Type", "Authorization"],  # Solo headers necesarios
 )
 
 # In-memory cache for available slots
@@ -60,10 +75,53 @@ def get_cached_slots(store, service):
             return entry['data']
     return None
 
+def detect_new_appointments(old_data, new_data, store, service):
+    """Detects new appointments by comparing old and new data"""
+    if not old_data or not new_data:
+        return []
+    
+    # Create sets of appointment identifiers for comparison
+    old_appointments = set()
+    for item in old_data:
+        if isinstance(item, dict) and 'fecha' in item and 'hora' in item:
+            old_appointments.add(f"{item['fecha']}_{item['hora']}")
+    
+    new_appointments = []
+    for item in new_data:
+        if isinstance(item, dict) and 'fecha' in item and 'hora' in item:
+            appointment_id = f"{item['fecha']}_{item['hora']}"
+            if appointment_id not in old_appointments:
+                # This is a new appointment
+                new_appointments.append({
+                    'estacion': f"Estación {store} - Servicio {service}",
+                    'fecha': item['fecha'],
+                    'hora': item['hora']
+                })
+    
+    if new_appointments:
+        print(f"🎉 Detected {len(new_appointments)} new appointments for store {store}, service {service}")
+    
+    return new_appointments
+
 def set_cached_slots(store, service, data):
     key = cache_key(store, service)
+    
     with slots_cache_lock:
+        # Check if there are new appointments
+        old_data = slots_cache.get(key, {}).get('data', [])
+        new_appointments = detect_new_appointments(old_data, data, store, service)
+        
+        # Update cache
         slots_cache[key] = {'data': data, 'timestamp': time.time()}
+        
+        # Send notifications for new appointments
+        if new_appointments:
+            for appointment in new_appointments:
+                send_new_appointment_notification(
+                    appointment['estacion'],
+                    appointment['fecha'], 
+                    appointment['hora']
+                )
 
 # Background thread to refresh cache periodically
 def background_cache_refresher():
@@ -131,12 +189,27 @@ def get_servicios(store_id: str):
 
 # Endpoint para registrar el token FCM
 @app.post("/register-token")
-async def register_token(request: Request):
-    data = await request.json()
-    token = data.get("token")
-    # Aquí podrías guardar el token en una base de datos o archivo
-    print(f"Token FCM recibido: {token}")
-    return {"status": "token registrado"}
+async def register_token_endpoint(request: Request):
+    try:
+        data = await request.json()
+        token = data.get("token")
+        
+        if not token:
+            return {"error": "Token is required"}, 400
+        
+        success = register_device_token(token)
+        if success:
+            return {
+                "status": "success", 
+                "message": "Token registered successfully",
+                "registered_devices": get_registered_tokens_count()
+            }
+        else:
+            return {"error": "Invalid token format"}, 400
+            
+    except Exception as e:
+        print(f"Error registering token: {e}")
+        return {"error": "Failed to register token"}, 500
 
 
 # Endpoint to get all real stations
@@ -183,13 +256,15 @@ def get_fechas(store: str, service: str, n: int = 3):
         print(f"❌ Error getting appointments: {e}")
         # Return empty array in case of error
         return {"fechas_horas": []}
-# Endpoint to register FCM token
-@app.post("/register-token")
-async def register_token(request: Request):
-    data = await request.json()
-    token = data.get("token")
-    print(f"FCM Token registered: {token}")
-    return {"message": "Token registered successfully"}
+# Endpoint para estadísticas de notificaciones
+@app.get("/notifications/stats")
+def get_notification_stats():
+    """Returns notification system statistics"""
+    return {
+        "registered_devices": get_registered_tokens_count(),
+        "firebase_enabled": messaging is not None,
+        "status": "active" if messaging else "disabled"
+    }
 
 # Endpoint to monitor cache status
 @app.get("/cache/status")
