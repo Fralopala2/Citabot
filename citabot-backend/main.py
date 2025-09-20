@@ -4,7 +4,7 @@ import time
 import os
 from fastapi import FastAPI, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
-from notifier import register_device_token, send_new_appointment_notification, get_registered_tokens_count
+from notifier import register_device_token, send_new_appointment_notification, get_registered_tokens_count, is_firebase_enabled
 from scraper_sitval import SitValScraper
 
 
@@ -260,10 +260,11 @@ def get_fechas(store: str, service: str, n: int = 3):
 @app.get("/notifications/stats")
 def get_notification_stats():
     """Returns notification system statistics"""
+    firebase_enabled = is_firebase_enabled()
     return {
         "registered_devices": get_registered_tokens_count(),
-        "firebase_enabled": messaging is not None,
-        "status": "active" if messaging else "disabled"
+        "firebase_enabled": firebase_enabled,
+        "status": "active" if firebase_enabled else "disabled"
     }
 
 # Endpoint to monitor cache status

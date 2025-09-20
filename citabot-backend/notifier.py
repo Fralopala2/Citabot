@@ -87,3 +87,7 @@ def send_new_appointment_notification(estacion, fecha, hora):
 def get_registered_tokens_count():
     """Retorna el número de tokens registrados"""
     return len(registered_tokens)
+
+def is_firebase_enabled():
+    """Retorna True si Firebase está configurado y disponible"""
+    return messaging is not None and firebase_app is not None
