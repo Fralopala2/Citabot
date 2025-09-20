@@ -296,3 +296,15 @@ firebase-service-account.json
 key.properties
 **/*.keystore
 **/*.jks
+
+# Additional security patterns
+**/*secret*
+**/*password*
+**/*token*
+**/*credential*
+**/config/production.*
+**/config/staging.*
+**/.secrets/
+**/secrets.json
+**/private_key*
+**/client_secret*
