@@ -2,7 +2,6 @@
   <img width="300" height="300" alt="citabot" src="https://github.com/user-attachments/assets/174c87ad-1ee3-455e-871a-54fb968bdf37" />
 </p>
 
-
 # Citabot
 
 Citabot is a Flutter app for Android that automates the search for available appointments in Spanish government services, including ITV (vehicle inspection) and NIA (foreigner ID) renewal. The app connects to a robust Python FastAPI backend that performs real-time scraping, delivers accurate appointment data, and sends **automatic push notifications** when new appointments become available.
@@ -10,18 +9,21 @@ Citabot is a Flutter app for Android that automates the search for available app
 ## ✨ Key Features
 
 ### 🔔 **Automatic Push Notifications**
+
 - **Real-time monitoring**: Backend checks for new appointments every 30 minutes
 - **Firebase Cloud Messaging (FCM)**: Notifications work even when app is closed
 - **Smart detection**: Only notifies when genuinely new appointments appear
 - **Works 24/7**: No need to keep the app open or check manually
 
 ### 📱 **Modern User Experience**
+
 - Clean, intuitive, and responsive Material Design interface
 - Custom loading indicators with animations and informative messages
 - Enhanced error handling with user-friendly feedback
 - Smooth navigation and interactive elements
 
 ### 🎯 **Smart Appointment Search**
+
 - Search for **real ITV appointments** by province, station, and service type
 - **Favorites system**: Save preferred stations for quick access
 - **Bulk search**: Find earliest available appointment across all favorite stations
@@ -29,6 +31,7 @@ Citabot is a Flutter app for Android that automates the search for available app
 - Real-time availability with accurate dates, times, and prices
 
 ### 🛡️ **Security & Performance**
+
 - **Restricted CORS policy**: Backend only accepts requests from known domains
 - **Rate limiting**: Respectful scraping to avoid service disruption
 - **Intelligent caching**: 30-minute cache with background refresh
@@ -44,23 +47,24 @@ Citabot is a Flutter app for Android that automates the search for available app
 ## Installation
 
 1. Clone the repository:
-	```
-	git clone https://github.com/Fralopala2/Citabot.git
-	```
+   ```
+   git clone https://github.com/Fralopala2/Citabot.git
+   ```
 2. Install Flutter dependencies:
-	```
-	cd citabot_app
-	flutter pub get
-	```
+   ```
+   cd citabot_app
+   flutter pub get
+   ```
 3. Install backend dependencies:
-	```
-	cd citabot-backend
-	pip install -r requirements.txt
-	```
+   ```
+   cd citabot-backend
+   pip install -r requirements.txt
+   ```
 
 ## 🚀 Quick Start
 
 ### For End Users
+
 1. **Download and install** the APK on your Android device
 2. **Open the app** - it will automatically register for notifications
 3. **Add favorite stations** you want to monitor
@@ -69,31 +73,33 @@ Citabot is a Flutter app for Android that automates the search for available app
 ### For Developers
 
 #### Backend Development
+
 1. Configure environment:
-	```bash
-	cd citabot-backend
-	cp .env.example .env
-	cp firebase-service-account.json.example firebase-service-account.json
-	# Edit both files with your Firebase credentials
-	```
+   ```bash
+   cd citabot-backend
+   cp .env.example .env
+   cp firebase-service-account.json.example firebase-service-account.json
+   # Edit both files with your Firebase credentials
+   ```
 2. Start the backend:
-	```bash
-	uvicorn main:app --reload
-	```
-	Backend available at `http://127.0.0.1:8000`
+   ```bash
+   uvicorn main:app --reload
+   ```
+   Backend available at `http://127.0.0.1:8000`
 
 #### Android App Development
+
 1. Configure Firebase:
-	```bash
-	cd citabot_app/android/app
-	cp google-services.json.example google-services.json
-	# Edit with your Firebase Android configuration
-	```
+   ```bash
+   cd citabot_app/android/app
+   cp google-services.json.example google-services.json
+   # Edit with your Firebase Android configuration
+   ```
 2. Run the app:
-	```bash
-	cd citabot_app
-	flutter run
-	```
+   ```bash
+   cd citabot_app
+   flutter run
+   ```
 
 ## Project Structure
 
@@ -103,17 +109,20 @@ Citabot is a Flutter app for Android that automates the search for available app
 ## 🚀 Backend Endpoints
 
 ### Core Functionality
+
 - `GET /itv/estaciones` — Returns all real ITV stations and provinces
 - `GET /itv/servicios` — Returns available services for a specific station
 - `GET /itv/fechas` — Returns next available dates and times for ITV appointments
 - `GET /cita-nia` — Returns simulated NIA appointments
 
 ### Push Notifications
+
 - `POST /register-token` — Registers FCM device token for notifications
 - `POST /notifications/test` — Test endpoint to send notification to specific token
 - `GET /notifications/stats` — Returns notification system statistics
 
 ### System Monitoring
+
 - `GET /cache/status` — Returns cache status and refresh intervals
 - `POST /cache/clear` — Manually clears all cached data
 - `GET /debug/fechas` — Debug endpoint for raw scraper data
@@ -126,6 +135,7 @@ Citabot is a Flutter app for Android that automates the search for available app
 **Before running the project, you must configure the sensitive files:**
 
 #### Backend (Firebase and environment variables):
+
 ```bash
 cd citabot-backend
 cp .env.example .env
@@ -135,6 +145,7 @@ cp firebase-service-account.json.example firebase-service-account.json
 Then edit both files with your real Firebase credentials.
 
 #### Flutter App (Google Services):
+
 ```bash
 cd citabot_app/android/app
 cp google-services.json.example google-services.json
@@ -175,6 +186,7 @@ ENVIRONMENT=production  # or "development"
 ## 🔧 Technical Details
 
 ### Backend Architecture
+
 - **Robust scraping engine**: Extracts real appointment data from official SITVAL system
 - **Automatic instanceCode extraction**: Handles session management reliably
 - **Intelligent caching**: 30-minute TTL with background refresh every 30 minutes
@@ -183,6 +195,7 @@ ENVIRONMENT=production  # or "development"
 - **Environment-aware**: Different configurations for development vs production
 
 ### Push Notification System
+
 - **Firebase Cloud Messaging (FCM)**: Industry-standard push notification service
 - **Automatic token registration**: Devices register themselves when app starts
 - **Background monitoring**: Server continuously monitors for new appointments
@@ -191,6 +204,7 @@ ENVIRONMENT=production  # or "development"
 - **Works offline**: Notifications delivered even when app is closed
 
 ### Mobile App Features
+
 - **Custom UI components**: Loading indicators with animations and overlays
 - **Date filtering**: Automatically excludes past dates from search results
 - **Favorites management**: Local storage for preferred stations
@@ -198,6 +212,7 @@ ENVIRONMENT=production  # or "development"
 - **Material Design**: Modern Android UI following Google's design guidelines
 
 ### Deployment
+
 - **Backend**: Deployed on Render with automatic GitHub integration
 - **Database**: In-memory caching with periodic refresh (no external DB required)
 - **Security**: Environment variables for sensitive data, .gitignore for credentials
@@ -206,13 +221,16 @@ ENVIRONMENT=production  # or "development"
 ## 🚀 Production Deployment
 
 ### Backend (Render)
+
 The backend is deployed at `https://citabot.onrender.com` with:
+
 - Automatic deployment from GitHub main branch
 - Environment variables configured in Render dashboard
 - Firebase credentials stored securely as environment variables
 - CORS configured for production domains
 
 ### Mobile App Distribution
+
 1. **Build release APK**:
    ```bash
    cd citabot_app
@@ -222,6 +240,7 @@ The backend is deployed at `https://citabot.onrender.com` with:
 3. **Installation**: Transfer APK to Android device and install
 
 ### Monitoring Production
+
 - **Health check**: `GET https://citabot.onrender.com/`
 - **Notification stats**: `GET https://citabot.onrender.com/notifications/stats`
 - **Cache status**: `GET https://citabot.onrender.com/cache/status`
@@ -229,6 +248,7 @@ The backend is deployed at `https://citabot.onrender.com` with:
 ## 🌟 Advanced Features
 
 ### Favorites System
+
 - **Save preferred stations**: Quick access to your most-used ITV locations
 - **Bulk search capability**: Find earliest appointment across all favorite stations in one search
 - **Smart comparison**: Automatically shows the first available slot among all favorites
@@ -236,6 +256,7 @@ The backend is deployed at `https://citabot.onrender.com` with:
 - **Dedicated management**: Clean interface for adding/removing favorite stations
 
 ### Automatic Notifications
+
 - **Set and forget**: Add stations to favorites and receive automatic notifications
 - **Real-time monitoring**: Backend checks your favorite stations every 30 minutes
 - **New appointment alerts**: Get notified immediately when new slots become available
@@ -243,6 +264,7 @@ The backend is deployed at `https://citabot.onrender.com` with:
 - **Multiple stations**: Monitor several locations simultaneously
 
 ### User Experience Enhancements
+
 - **Loading animations**: Custom indicators with rotating icons and overlays
 - **Informative messages**: Clear feedback during data fetching and cache refresh
 - **Error recovery**: Helpful messages and retry options when searches fail
