@@ -267,6 +267,37 @@ def get_notification_stats():
         "status": "active" if firebase_enabled else "disabled"
     }
 
+# Endpoint para probar notificaciones
+@app.post("/notifications/test")
+async def test_notification(request: Request):
+    """Test endpoint to send a notification to a specific token"""
+    try:
+        data = await request.json()
+        token = data.get("token")
+        
+        if not token:
+            return {"error": "Token is required"}, 400
+        
+        # Send test notification
+        success = send_new_appointment_notification(
+            "Estación de Prueba",
+            "2025-12-25", 
+            "10:30",
+            specific_token=token
+        )
+        
+        if success:
+            return {
+                "status": "success", 
+                "message": "Test notification sent successfully"
+            }
+        else:
+            return {"error": "Failed to send notification"}, 500
+            
+    except Exception as e:
+        print(f"Error sending test notification: {e}")
+        return {"error": "Failed to send test notification"}, 500
+
 # Endpoint to monitor cache status
 @app.get("/cache/status")
 def get_cache_status():

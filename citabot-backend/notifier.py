@@ -83,7 +83,7 @@ def send_notification_to_all(title, message, data=None):
     
     print(f"Notifications sent: {successful_sends}/{len(registered_tokens) + len(failed_tokens)}")
 
-def send_new_appointment_notification(estacion, fecha, hora):
+def send_new_appointment_notification(estacion, fecha, hora, specific_token=None):
     """Envía notificación específica para nueva cita disponible"""
     title = "🎉 Nueva cita disponible!"
     message = f"{estacion}\n📅 {fecha} a las {hora}"
@@ -95,7 +95,35 @@ def send_new_appointment_notification(estacion, fecha, hora):
         "hora": hora
     }
     
-    send_notification_to_all(title, message, data)
+    if specific_token:
+        send_notification_to_token(title, message, data, specific_token)
+    else:
+        send_notification_to_all(title, message, data)
+
+def send_notification_to_token(title, message, data, token):
+    """Envía notificación push a un token específico"""
+    if not messaging or not firebase_app:
+        print(f"Test notification would be sent to {token[:20]}...: {title} - {message}")
+        return True
+    
+    try:
+        # Crear el mensaje
+        notification_msg = messaging.Message(
+            notification=messaging.Notification(
+                title=title,
+                body=message
+            ),
+            data=data or {},
+            token=token
+        )
+        
+        response = messaging.send(notification_msg)
+        print(f"Test notification sent successfully to {token[:20]}...: {response}")
+        return True
+        
+    except Exception as e:
+        print(f"Error sending test notification to {token[:20]}...: {e}")
+        return False
 
 def get_registered_tokens_count():
     """Retorna el número de tokens registrados"""
