@@ -308,3 +308,68 @@ def clear_cache():
     return {
         "message": f"Cache cleared. {cleared_entries} entries removed."
     }
+
+# Debug endpoint to see raw scraper data
+@app.get("/debug/fechas")
+def debug_fechas(store: str, service: str):
+    """Debug endpoint to see raw scraper response"""
+    try:
+        print(f"DEBUG: Getting raw data for store={store}, service={service}")
+        
+        # Get fresh data without cache
+        with scraper_semaphore:
+            # Get instanceCode
+            instance_code = scraper.get_instance_code_robust(store)
+            print(f"DEBUG: instanceCode = {instance_code}")
+            
+            # Get month data
+            import datetime
+            today = datetime.date.today()
+            month_data = scraper.get_service_month_data(store, service, instance_code, today.strftime('%Y-%m-%d'))
+            print(f"DEBUG: month_data keys = {list(month_data.keys())}")
+            
+            open_days = month_data.get('get_open_days', {})
+            print(f"DEBUG: open_days = {open_days}")
+            
+            # Get first available day
+            valid_days = scraper._filter_valid_days(open_days)
+            print(f"DEBUG: valid_days = {valid_days}")
+            
+            if valid_days:
+                first_day = valid_days[0]
+                print(f"DEBUG: Checking day {first_day}")
+                
+                # Get day data
+                day_data = scraper.get_service_day_data(store, service, instance_code, first_day)
+                print(f"DEBUG: day_data keys = {list(day_data.keys())}")
+                
+                day_slots = day_data.get('get_day_slots', {})
+                print(f"DEBUG: day_slots = {day_slots}")
+                
+                valid_hours = scraper._extract_valid_hours(day_slots)
+                print(f"DEBUG: valid_hours = {valid_hours}")
+                
+                return {
+                    "store": store,
+                    "service": service,
+                    "instance_code": instance_code,
+                    "first_day": first_day,
+                    "raw_day_slots": day_slots,
+                    "extracted_hours": valid_hours,
+                    "month_data_keys": list(month_data.keys()),
+                    "day_data_keys": list(day_data.keys())
+                }
+            else:
+                return {
+                    "store": store,
+                    "service": service,
+                    "error": "No valid days found",
+                    "raw_open_days": open_days
+                }
+                
+    except Exception as e:
+        return {
+            "error": str(e),
+            "store": store,
+            "service": service
+        }
