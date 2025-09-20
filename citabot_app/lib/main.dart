@@ -425,7 +425,14 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
               '${Config.fechasUrl}?store=$storeId&service=$serviceId&n=10',
             );
             try {
-              final responseFechas = await http.get(urlFechas);
+              final responseFechas = await http.get(
+                urlFechas,
+                headers: {
+                  'Cache-Control': 'no-cache, no-store, must-revalidate',
+                  'Pragma': 'no-cache',
+                  'Expires': '0',
+                },
+              );
               if (responseFechas.statusCode == 200 &&
                   responseFechas.body.isNotEmpty) {
                 final dataFechas = jsonDecode(responseFechas.body);
@@ -598,7 +605,14 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
     );
 
     try {
-      final response = await http.get(url);
+      final response = await http.get(
+        url,
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+        },
+      );
       if (response.statusCode == 200 && response.body.isNotEmpty) {
         final data = jsonDecode(response.body);
         final fechas = data['fechas_horas'] as List<dynamic>?;
