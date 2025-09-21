@@ -623,8 +623,13 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
           final serviciosFiltrados = servicios.where((s) {
             final nombre = normalizar((s['nombre'] ?? '').toString());
             if (subtipoNorm != null) {
-              // Si es turismo, aceptar cualquier servicio que contenga el subtipo
-              return nombre.contains(subtipoNorm);
+              // Si es turismo, aceptar solo servicios que contengan el subtipo y NO palabras excluidas
+              final exclusiones = [
+                'cuadriciclo', 'quad', 'moto', 'motocicleta', 'remolque', 'camion', 'autobus',
+                'tractor', 'obras', 'servicios', 'agricola', 've', 'caravana', 'autocaravana', 'bus', 'furgoneta', 'ligero', 'semirremolque'
+              ];
+              final esExcluido = exclusiones.any((pal) => nombre.contains(pal));
+              return nombre.contains(subtipoNorm) && !esExcluido;
             } else {
               // Buscar por categoría seleccionada
               return nombre.contains(catNorm);
