@@ -26,7 +26,10 @@ def load_testers_data():
         print(f"❌ Error loading testers data: {e}")
     
     print("📂 No existing testers data found, starting fresh")
-    return {}
+    return {
+        "testers": [],
+        "total_installations": 0
+    }
 
 def save_testers_data(installations_dict):
     """Save tester data to persistent storage"""
@@ -390,7 +393,24 @@ async def track_installation(request: Request):
         if not hasattr(app.state, 'installations'):
             app.state.installations = load_testers_data()
         
-        app.state.installations[user_id] = installation_data
+        # Asegurarse de que la estructura existe
+        if "testers" not in app.state.installations:
+            app.state.installations = {
+                "testers": [],
+                "total_installations": 0
+            }
+        
+        # Agregar o actualizar el tester
+        tester_exists = False
+        for tester in app.state.installations["testers"]:
+            if tester["user_id"] == user_id:
+                tester.update(installation_data)
+                tester_exists = True
+                break
+        
+        if not tester_exists:
+            app.state.installations["testers"].append(installation_data)
+            app.state.installations["total_installations"] += 1
         
         # Save to persistent storage
         save_testers_data(app.state.installations)
@@ -401,7 +421,7 @@ async def track_installation(request: Request):
             "status": "success",
             "message": "Installation tracked successfully",
             "user_id": user_id,
-            "total_installations": len(app.state.installations)
+            "total_installations": app.state.installations["total_installations"]
         }
         
     except Exception as e:
@@ -420,14 +440,22 @@ async def track_usage(request: Request):
             return {"error": "user_id is required"}, 400
         
         # Update last seen timestamp
-        if hasattr(app.state, 'installations') and user_id in app.state.installations:
-            app.state.installations[user_id]["last_seen"] = timestamp
-            
+        if not hasattr(app.state, 'installations'):
+            app.state.installations = load_testers_data()
+
+        # Buscar y actualizar el tester
+        tester_found = False
+        if "testers" in app.state.installations:
+            for tester in app.state.installations["testers"]:
+                if tester["user_id"] == user_id:
+                    tester["last_seen"] = timestamp
+                    tester_found = True
+                    break
+
+        if tester_found:
             # Save to persistent storage
             save_testers_data(app.state.installations)
-            
             print(f"📊 Usage tracked: User {user_id}")
-            
             return {
                 "status": "success", 
                 "message": "Usage tracked successfully"
