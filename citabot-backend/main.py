@@ -206,20 +206,31 @@ threading.Thread(target=background_cache_refresher, daemon=True).start()
 # Endpoint to get available services by station
 @app.get("/itv/servicios")
 def get_servicios(store_id: str):
-    # Llamar a startUp para obtener los servicios reales de la estación
-    startup_data = scraper._make_request('startUp', {'store': store_id})
-    categories = startup_data.get('categoriesServices') or {}
-    print(f"[DEBUG] categoriesServices extraído de startUp: {json.dumps(categories, ensure_ascii=False)[:2000]}")
+    """Gets available services for a specific ITV station"""
+    print(f"Getting services for station {store_id}...")
+    
+    # Use the new get_startup method
+    startup_data = scraper.get_startup("", store_id)
+    
+    categories = startup_data.get('categoriesServices', {})
+    print(f"[DEBUG] categoriesServices found: {len(categories)} categories")
+    
     servicios = []
-    for cat in categories.values():
-        cat_name = cat.get('name')
-        services = cat.get('services') or {}
-        for serv in services.values():
+    for cat_key, cat in categories.items():
+        cat_name = cat.get('name', 'Unknown')
+        services = cat.get('services', {})
+        
+        for serv_key, serv in services.items():
             service_id = serv.get('id')
             nombre = serv.get('name')
             if nombre and service_id:
-                servicios.append({'nombre': nombre, 'service': service_id, 'categoria': cat_name})
-    print(f"[DEBUG] servicios extraídos de categoriesServices: {servicios}")
+                servicios.append({
+                    'nombre': nombre, 
+                    'service': service_id, 
+                    'categoria': cat_name
+                })
+    
+    print(f"[DEBUG] Extracted {len(servicios)} services for station {store_id}")
     return {"servicios": servicios}
 
 

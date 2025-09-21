@@ -203,6 +203,30 @@ class SitValScraper:
             print(f"⚠️ Error getting groupStartup data: {e}")
             return {}
 
+    def get_startup(self, instance_code: str = "", store_id: str = "1") -> Dict[str, Any]:
+        """Gets startup information for a specific store via AJAX call"""
+        print(f"🌐 Making startUp AJAX call for store {store_id}...")
+        
+        # Make AJAX request for startUp
+        data = {
+            "store": str(store_id),
+            "instanceCode": instance_code,
+            "itineraryPlace": "0"
+        }
+        
+        try:
+            response = self._make_ajax_request(
+                self.AJAX_URL + "?module=startUp",
+                data
+            )
+            
+            print(f"✅ StartUp response received for store {store_id}")
+            return response
+            
+        except Exception as e:
+            print(f"⚠️ Error getting startUp data for store {store_id}: {e}")
+            return {}
+
     def extract_stations(self, group_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Extract stations information from groupStartup JSON response"""
         print(f"🏢 Extracting stations from groupStartup data...")
