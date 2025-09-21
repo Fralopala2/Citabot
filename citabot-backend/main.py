@@ -260,6 +260,55 @@ async def register_token_endpoint(request: Request):
         print(f"Error registering token: {e}")
         return {"error": "Failed to register token"}, 500
 
+@app.delete("/unregister-token")
+async def unregister_token_endpoint(request: Request):
+    """Remove a specific token from notifications"""
+    try:
+        data = await request.json()
+        token = data.get("token")
+        
+        if not token:
+            return {"error": "Token is required"}, 400
+        
+        # Remove the token
+        from notifier import unregister_device_token
+        removed = unregister_device_token(token)
+        
+        if removed:
+            return {
+                "status": "success", 
+                "message": "Token removed successfully",
+                "registered_devices": get_registered_tokens_count()
+            }
+        else:
+            return {
+                "status": "not_found",
+                "message": "Token was not found in registered devices",
+                "registered_devices": get_registered_tokens_count()
+            }
+            
+    except Exception as e:
+        print(f"Error unregistering token: {e}")
+        return {"error": "Failed to unregister token"}, 500
+
+@app.delete("/clear-all-tokens")
+def clear_all_tokens_endpoint():
+    """Remove ALL tokens (admin function)"""
+    try:
+        from notifier import clear_all_tokens
+        count_before = get_registered_tokens_count()
+        clear_all_tokens()
+        
+        return {
+            "status": "success",
+            "message": f"Cleared {count_before} tokens",
+            "registered_devices": get_registered_tokens_count()
+        }
+        
+    except Exception as e:
+        print(f"Error clearing tokens: {e}")
+        return {"error": "Failed to clear tokens"}, 500
+
 
 # Endpoint to get all real stations
 @app.get("/itv/estaciones")

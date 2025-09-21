@@ -129,6 +129,27 @@ def get_registered_tokens_count():
     """Retorna el número de tokens registrados"""
     return len(registered_tokens)
 
+def unregister_device_token(token):
+    """Desregistra un token específico"""
+    if token in registered_tokens:
+        registered_tokens.remove(token)
+        print(f"Device token unregistered: {token[:20]}...")
+        return True
+    else:
+        print(f"Token not found for unregistration: {token[:20]}...")
+        return False
+
+def clear_all_tokens():
+    """Borra todos los tokens registrados"""
+    count = len(registered_tokens)
+    registered_tokens.clear()
+    print(f"Cleared {count} registered tokens")
+    return count
+
+def get_all_tokens():
+    """Retorna una lista de todos los tokens (para debugging)"""
+    return list(registered_tokens)
+
 def is_firebase_enabled():
     """Retorna True si Firebase está configurado y disponible"""
     return messaging is not None and firebase_app is not None
