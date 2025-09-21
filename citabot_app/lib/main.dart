@@ -117,23 +117,27 @@ class _MyHomePageState extends State<MyHomePage> {
         final data = jsonDecode(response.body);
         final serverReady = data['server_ready'] ?? false;
         
-        setState(() {
-          servidorInicializando = !serverReady;
-          if (servidorInicializando) {
-            mensajeCarga = "El servidor se está inicializando...\nEsto puede tardar hasta 1 minuto.";
-          } else {
-            mensajeCarga = "Cargando estaciones...";
-          }
-        });
+        if (mounted) {
+          setState(() {
+            servidorInicializando = !serverReady;
+            if (servidorInicializando) {
+              mensajeCarga = "El servidor se está inicializando...\nEsto puede tardar hasta 1 minuto.";
+            } else {
+              mensajeCarga = "Cargando estaciones...";
+            }
+          });
+        }
         
         return serverReady;
       }
     } catch (e) {
       // Si no podemos verificar el estado, asumimos que está inicializando
-      setState(() {
-        servidorInicializando = true;
-        mensajeCarga = "Conectando con el servidor...\nEsto puede tardar hasta 1 minuto.";
-      });
+      if (mounted) {
+        setState(() {
+          servidorInicializando = true;
+          mensajeCarga = "Conectando con el servidor...\nEsto puede tardar hasta 1 minuto.";
+        });
+      }
     }
     return false;
   }
@@ -669,22 +673,26 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
         final data = jsonDecode(response.body);
         final serverReady = data['server_ready'] ?? false;
         
-        setState(() {
-          servidorInicializando = !serverReady;
-          if (servidorInicializando) {
-            mensajeCarga = "El servidor se está inicializando...\nEsto puede tardar hasta 1 minuto.";
-          } else {
-            mensajeCarga = "Cargando estaciones...";
-          }
-        });
+        if (mounted) {
+          setState(() {
+            servidorInicializando = !serverReady;
+            if (servidorInicializando) {
+              mensajeCarga = "El servidor se está inicializando...\nEsto puede tardar hasta 1 minuto.";
+            } else {
+              mensajeCarga = "Cargando estaciones...";
+            }
+          });
+        }
         
         return serverReady;
       }
     } catch (e) {
-      setState(() {
-        servidorInicializando = true;
-        mensajeCarga = "Conectando con el servidor...\nEsto puede tardar hasta 1 minuto.";
-      });
+      if (mounted) {
+        setState(() {
+          servidorInicializando = true;
+          mensajeCarga = "Conectando con el servidor...\nEsto puede tardar hasta 1 minuto.";
+        });
+      }
     }
     return false;
   }
@@ -693,31 +701,41 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
     int maxRetries = 24;
     int retries = 0;
     
-    while (retries < maxRetries) {
+    while (retries < maxRetries && mounted) {
       await Future.delayed(Duration(seconds: 5));
+      
+      if (!mounted) return; // Exit if widget is disposed
       
       final serverReady = await _checkServerStatus();
       if (serverReady) {
-        setState(() {
-          servidorInicializando = false;
-          mensajeCarga = "¡Servidor listo! Cargando estaciones...";
-        });
+        if (mounted) {
+          setState(() {
+            servidorInicializando = false;
+            mensajeCarga = "¡Servidor listo! Cargando estaciones...";
+          });
+        }
         return;
       }
       
       retries++;
-      setState(() {
-        mensajeCarga = "El servidor se está inicializando...\nReintentando en 5 segundos... ($retries/$maxRetries)";
-      });
+      if (mounted) {
+        setState(() {
+          mensajeCarga = "El servidor se está inicializando...\nReintentando en 5 segundos... ($retries/$maxRetries)";
+        });
+      }
     }
     
-    setState(() {
-      servidorInicializando = false;
-      mensajeCarga = "El servidor está tardando más de lo esperado. Reintentando...";
-    });
+    if (mounted) {
+      setState(() {
+        servidorInicializando = false;
+        mensajeCarga = "El servidor está tardando más de lo esperado. Reintentando...";
+      });
+    }
   }
 
   Future<void> cargarEstaciones() async {
+    if (!mounted) return;
+    
     setState(() {
       cargandoEstaciones = true;
       mensajeCarga = "Conectando...";
@@ -726,7 +744,7 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
     // Verificar estado del servidor
     final serverReady = await _checkServerStatus();
     
-    if (!serverReady) {
+    if (!serverReady && mounted) {
       await _waitForServerReady();
     }
     
@@ -742,9 +760,11 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
         final data = jsonDecode(response.body);
         estaciones = data['estaciones'];
         
-        setState(() {
-          mensajeCarga = "¡Estaciones cargadas correctamente!";
-        });
+        if (mounted) {
+          setState(() {
+            mensajeCarga = "¡Estaciones cargadas correctamente!";
+          });
+        }
         
         await Future.delayed(Duration(milliseconds: 1000));
       } else {
@@ -753,18 +773,22 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
     } catch (e) {
       estaciones = [];
       debugPrint('Error al cargar estaciones: $e');
-      setState(() {
-        mensajeCarga = "Error al cargar estaciones. Reintentando...";
-      });
+      if (mounted) {
+        setState(() {
+          mensajeCarga = "Error al cargar estaciones. Reintentando...";
+        });
+      }
       
       Future.delayed(Duration(seconds: 3), () {
         if (mounted) cargarEstaciones();
       });
     }
     
-    setState(() {
-      cargandoEstaciones = false;
-    });
+    if (mounted) {
+      setState(() {
+        cargandoEstaciones = false;
+      });
+    }
   }
 
   Future<void> cargarServiciosDisponibles() async {
