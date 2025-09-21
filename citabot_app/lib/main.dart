@@ -530,40 +530,55 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
       );
       return;
     }
-    // Selector de categoría (solo 'Turismo')
+    // Selector de categoría: solo 'Turismo' (una vez) y el resto de categorías (sin variantes de turismo)
+    final List<String> categoriasOriginal = categoriasServicios.keys.toList();
+    final List<String> turismoVariantes = [
+      'Turismo diésel',
+      'Turismo gasolina',
+      'Turismo eléctrico',
+    ]; // variantes a agrupar
+    final List<String> categorias = [
+      'Turismo',
+      ...categoriasOriginal.where((c) => !turismoVariantes.contains(c) && c.toLowerCase() != 'turismo'),
+    ];
     final categoriaSeleccionada = await showDialog<String>(
       context: context,
       builder: (context) => SimpleDialog(
         title: const Text('Selecciona tipo de servicio'),
-        children: [
-          SimpleDialogOption(
-            child: const Text('Turismo'),
-            onPressed: () => Navigator.pop(context, 'Turismo'),
-          ),
-        ],
-      ),
-    );
-    if (!mounted) return;
-    if (categoriaSeleccionada == null) return;
-
-    // Selector de subtipo (diésel, gasolina, eléctrico)
-    final List<String> subtipos = ['diésel', 'gasolina', 'eléctrico'];
-    final subtipoSeleccionado = await showDialog<String>(
-      context: context,
-      builder: (context) => SimpleDialog(
-        title: const Text('Selecciona subtipo de Turismo'),
-        children: subtipos
+        children: categorias
             .map(
-              (sub) => SimpleDialogOption(
-                child: Text(sub[0].toUpperCase() + sub.substring(1)),
-                onPressed: () => Navigator.pop(context, sub),
+              (cat) => SimpleDialogOption(
+                child: Text(cat),
+                onPressed: () => Navigator.pop(context, cat),
               ),
             )
             .toList(),
       ),
     );
     if (!mounted) return;
-    if (subtipoSeleccionado == null) return;
+    if (categoriaSeleccionada == null) return;
+
+    // Si es 'Turismo', mostrar subtipo
+    String? subtipoSeleccionado;
+    if (categoriaSeleccionada == 'Turismo') {
+      final List<String> subtipos = ['diésel', 'gasolina', 'eléctrico'];
+      subtipoSeleccionado = await showDialog<String>(
+        context: context,
+        builder: (context) => SimpleDialog(
+          title: const Text('Selecciona subtipo de Turismo'),
+          children: subtipos
+              .map(
+                (sub) => SimpleDialogOption(
+                  child: Text(sub[0].toUpperCase() + sub.substring(1)),
+                  onPressed: () => Navigator.pop(context, sub),
+                ),
+              )
+              .toList(),
+        ),
+      );
+      if (!mounted) return;
+      if (subtipoSeleccionado == null) return;
+    }
 
     setState(() {
       buscandoFavoritos = true;
@@ -584,7 +599,8 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
         .replaceAll('á','a').replaceAll('é','e').replaceAll('í','i')
         .replaceAll('ó','o').replaceAll('ú','u').replaceAll('ü','u')
         .replaceAll(' ','');
-    final subtipoNorm = normalizar(subtipoSeleccionado);
+  String? subtipoNorm = subtipoSeleccionado != null ? normalizar(subtipoSeleccionado) : null;
+    String catNorm = normalizar(categoriaSeleccionada);
     for (final estacion in estacionesFiltradas) {
       final storeIdFav = estacion['store_id']?.toString();
       final nombreEstacionFav =
@@ -603,11 +619,16 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
           for (final s in servicios) {
             debugPrint('  Servicio: "${s['nombre']}"');
           }
-          // Filtrar solo servicios de la categoría y subtipo seleccionados
+          // Filtrar servicios según selección
           final serviciosFiltrados = servicios.where((s) {
             final nombre = normalizar((s['nombre'] ?? '').toString());
-            final catNorm = normalizar(categoriaSeleccionada);
-            return nombre.contains(catNorm) && nombre.contains(subtipoNorm);
+            if (subtipoNorm != null) {
+              // Si es turismo, aceptar cualquier servicio que contenga el subtipo
+              return nombre.contains(subtipoNorm);
+            } else {
+              // Buscar por categoría seleccionada
+              return nombre.contains(catNorm);
+            }
           }).toList();
           debugPrint(
             'Estación $storeIdFav ($nombreEstacionFav) - Servicios válidos: ${serviciosFiltrados.map((s) => s['nombre']).toList()}',
