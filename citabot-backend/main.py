@@ -640,33 +640,35 @@ def get_estaciones():
 
 
 # Endpoint to get upcoming real appointment dates and times (with cache)
+from fastapi import Request
+
 @app.get("/itv/fechas")
-def get_fechas(store: str, service: str, n: int = 3):
-    """Gets next available appointments for a station and service"""
+async def get_fechas(request: Request, store: str, service: str, n: int = 3, force_refresh: bool = False):
+    """Gets next available appointments for a station and service. Permite forzar datos frescos si se solicita."""
     print(f"Searching appointments for station {store}, service {service}")
-    
-    # Try to get from cache first
-    cached = get_cached_slots(store, service)
-    if cached:
-        print(f"Returning {len(cached[:n])} appointments from cache")
-        return {"fechas_horas": cached[:n]}
-    
-    # If not in cache, get with concurrency control
-    print(f"No cache, getting fresh data...")
-    
+
+    # Detectar si el frontend pide forzar datos frescos
+    force_fresh = force_refresh
+    cache_control = request.headers.get("Cache-Control", "").lower()
+    if "no-cache" in cache_control or "no-store" in cache_control:
+        force_fresh = True
+
+    if not force_fresh:
+        cached = get_cached_slots(store, service)
+        if cached:
+            print(f"Returning {len(cached[:n])} appointments from cache")
+            return {"fechas_horas": cached[:n]}
+
+    # Si se fuerza datos frescos o no hay cache
+    print(f"Getting fresh data (force_fresh={force_fresh})...")
     try:
-        # Use semaphore to limit concurrent requests
         with scraper_semaphore:
-            # Use empty instanceCode as it works perfectly
             fechas_horas = scraper.get_next_available_slots(store, service, "", n)
             set_cached_slots(store, service, fechas_horas)
-            
             print(f"Got {len(fechas_horas)} new appointments")
             return {"fechas_horas": fechas_horas}
-            
     except Exception as e:
         print(f"Error getting appointments: {e}")
-        # Return empty array in case of error
         return {"fechas_horas": []}
 # Endpoint para estadísticas de notificaciones
 @app.get("/notifications/stats")
