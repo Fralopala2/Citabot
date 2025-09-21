@@ -4,7 +4,7 @@
 
 # Citabot
 
-Citabot is a Flutter app for Android that automates the search for available appointments in Spanish government services, including ITV (vehicle inspection) and NIA (foreigner ID) renewal. The app connects to a robust Python FastAPI backend that performs real-time scraping, delivers accurate appointment data, and sends **automatic push notifications** when new appointments become available.
+Citabot is a Flutter app for Android that automates the search for available appointments in services, including ITV (vehicle inspection). The app connects to a robust Python FastAPI backend that performs real-time scraping, delivers accurate appointment data, and sends **automatic push notifications** when new appointments become available.
 
 ## ✨ Key Features
 

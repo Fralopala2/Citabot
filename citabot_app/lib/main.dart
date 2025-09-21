@@ -11,10 +11,13 @@ import 'favoritos_screen.dart';
 import 'categorias_servicio.dart';
 // ignore: unused_import
 import 'seleccionar_servicio_screen.dart';
+import 'services/notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+  // Inicializar servicio de notificaciones
+  await NotificationService.initialize();
   // Inicializa AdMob
   await MobileAds.instance.initialize();
   runApp(const MyApp());

@@ -264,6 +264,8 @@ def get_notification_stats():
     return {
         "registered_devices": get_registered_tokens_count(),
         "firebase_enabled": firebase_enabled,
+        "cache_ttl": CACHE_TTL,
+        "background_refresh_interval": BACKGROUND_REFRESH_INTERVAL,
         "status": "active" if firebase_enabled else "disabled"
     }
 
