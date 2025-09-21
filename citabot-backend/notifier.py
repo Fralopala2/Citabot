@@ -35,7 +35,7 @@ def save_tokens_data():
         print(f"❌ Error saving tokens data: {e}")
         return False
 
-# Cargar tokens al iniciar
+# Carga tokens al iniciar
 load_tokens_data()
 
 try:

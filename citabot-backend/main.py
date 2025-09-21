@@ -29,7 +29,7 @@ def load_testers_data():
     return {}
 
 def save_testers_data(installations_dict):
-    """Save testers data to persistent storage"""
+    """Save tester data to persistent storage"""
     try:
         with open(TESTERS_DATA_FILE, 'w', encoding='utf-8') as f:
             json.dump(installations_dict, f, ensure_ascii=False, indent=2)
