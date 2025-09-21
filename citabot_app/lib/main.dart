@@ -95,6 +95,8 @@ class _MyHomePageState extends State<MyHomePage> {
     _getTokenAndSend();
     // Track app usage for Google Play testing (daily heartbeat)
     _trackUsage();
+    // Get user ID for display
+    _getUserId();
   }
 
   @override
@@ -332,6 +334,7 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   String? _token;
+  String? _userId;
 
   Future<void> _getTokenAndSend() async {
     final token = await FirebaseMessaging.instance.getToken();
@@ -367,6 +370,17 @@ class _MyHomePageState extends State<MyHomePage> {
       await InstallationTracker.trackAppUsage();
     } catch (e) {
       debugPrint("Error tracking usage: $e");
+    }
+  }
+
+  Future<void> _getUserId() async {
+    try {
+      final userId = await InstallationTracker.getUserId();
+      setState(() {
+        _userId = userId;
+      });
+    } catch (e) {
+      debugPrint("Error getting user ID: $e");
     }
   }
 
@@ -452,6 +466,19 @@ class _MyHomePageState extends State<MyHomePage> {
                     _token ?? 'Obteniendo token...',
                     textAlign: TextAlign.center,
                     style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Tu User ID (para soporte):',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  child: SelectableText(
+                    _userId ?? 'Obteniendo ID...',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 12, color: Colors.deepPurple),
                   ),
                 ),
                 const SizedBox(height: 32),
