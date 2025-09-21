@@ -815,3 +815,19 @@ def debug_fechas(store: str, service: str):
             "store": store,
             "service": service
         }
+
+@app.get("/admin/delete-tester")
+def delete_tester(user_id: str):
+    """Delete a tester by user_id (admin endpoint)"""
+    try:
+        if not hasattr(app.state, 'installations'):
+            app.state.installations = load_testers_data()
+        
+        if user_id in app.state.installations:
+            del app.state.installations[user_id]
+            save_testers_data(app.state.installations)
+            return {"status": "success", "message": f"Tester {user_id} deleted."}
+        else:
+            return {"status": "not_found", "message": f"Tester {user_id} not found."}, 404
+    except Exception as e:
+        return {"status": "error", "message": str(e)}, 500
