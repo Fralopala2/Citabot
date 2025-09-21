@@ -52,6 +52,19 @@ def clear_dashboard():
     print("🧹 Dashboard limpiado - todos los testers eliminados")
     return empty_dashboard
 
+def _calculate_days_since(timestamp_str):
+    """Calculate days since a timestamp"""
+    if not timestamp_str:
+        return None
+    
+    try:
+        from datetime import datetime
+        timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+        now = datetime.now(timestamp.tzinfo)
+        return (now - timestamp).days
+    except Exception:
+        return None
+
 scraper = SitValScraper()
 app = FastAPI(
     title="Citabot API",
@@ -64,7 +77,6 @@ allowed_origins = [
     "https://citabot.onrender.com",  # Tu dominio de producción
     "http://localhost:3000",         # Desarrollo web local
     "http://127.0.0.1:3000",        # Desarrollo web local alternativo
-    # Agregar más dominios según necesites
 ]
 
 # En desarrollo, permitir localhost
@@ -236,7 +248,7 @@ def background_cache_refresher():
                             data = scraper.get_next_available_slots(store, service, "", 10)
                             set_cached_slots(store, service, data)
                             
-                            # Delay between quests s to be respectful
+                            # Delay between requests to be respectful
                             if i < len(keys) - 1:  # No delay after the last one
                                 time.sleep(REQUEST_DELAY)
                                 
@@ -284,9 +296,6 @@ def get_servicios(store_id: str):
     
     print(f"[DEBUG] Extracted {len(servicios)} services for station {store_id}")
     return {"servicios": servicios}
-
-
-
 
 # Endpoint para registrar el token FCM
 @app.post("/register-token")
@@ -363,7 +372,6 @@ def clear_all_tokens_endpoint():
     except Exception as e:
         print(f"Error clearing tokens: {e}")
         return {"error": "Failed to clear tokens"}, 500
-
 
 # Installation tracking endpoints
 @app.post("/track-installation")
@@ -475,23 +483,24 @@ def get_testers_status():
             app.state.installations = load_testers_data()
         
         testers = []
-        for user_id, data in app.state.installations.items():
-            testers.append({
-                "user_id": user_id,
-                "platform": data.get("platform", "unknown"),
-                "app_version": data.get("app_version", "unknown"),
-                "install_date": data.get("timestamp"),
-                "last_seen": data.get("last_seen"),
-                "days_since_install": _calculate_days_since(data.get("timestamp")),
-                "days_since_last_seen": _calculate_days_since(data.get("last_seen"))
-            })
+        if "testers" in app.state.installations:
+            for tester in app.state.installations["testers"]:
+                testers.append({
+                    "user_id": tester.get("user_id", "unknown"),
+                    "platform": tester.get("platform", "unknown"),
+                    "app_version": tester.get("app_version", "unknown"),
+                    "install_date": tester.get("timestamp"),
+                    "last_seen": tester.get("last_seen"),
+                    "days_since_install": _calculate_days_since(tester.get("timestamp")),
+                    "days_since_last_seen": _calculate_days_since(tester.get("last_seen"))
+                })
         
         # Sort by install date (newest first)
         testers.sort(key=lambda x: x.get("install_date", ""), reverse=True)
         
         return {
             "total_testers": len(testers),
-            "active_installations": len([t for t in testers if t["days_since_last_seen"] <= 1]),
+            "active_installations": len([t for t in testers if (t.get("days_since_last_seen") or float('inf')) <= 1]),
             "total_usage_events": sum(1 for t in testers if t.get("last_seen")),
             "testers": testers
         }
@@ -503,35 +512,32 @@ def get_testers_status():
 @app.get("/admin/dashboard")
 def get_testers_dashboard():
     """HTML dashboard for testers tracking"""
-
-@app.get("/admin/clear-dashboard")
-async def admin_clear_dashboard():
-    """Limpia el dashboard eliminando todos los testers registrados"""
-    cleared_data = clear_dashboard()
-    app.state.installations = cleared_data
-    return {"message": "Dashboard limpiado correctamente", "data": cleared_data}
     try:
         if not hasattr(app.state, 'installations'):
             app.state.installations = load_testers_data()
         
         testers = []
-        for user_id, data in app.state.installations.items():
-            testers.append({
-                "user_id": user_id,
-                "platform": data.get("platform", "unknown"),
-                "app_version": data.get("app_version", "unknown"),
-                "install_date": data.get("timestamp"),
-                "last_seen": data.get("last_seen"),
-                "days_since_install": _calculate_days_since(data.get("timestamp")),
-                "days_since_last_seen": _calculate_days_since(data.get("last_seen"))
-            })
+        if "testers" in app.state.installations:
+            for tester in app.state.installations["testers"]:
+                days_since_install = _calculate_days_since(tester.get("timestamp"))
+                days_since_last_seen = _calculate_days_since(tester.get("last_seen"))
+                testers.append({
+                    "user_id": tester.get("user_id", "unknown"),
+                    "platform": tester.get("platform", "unknown"),
+                    "app_version": tester.get("app_version", "unknown"),
+                    "install_date": tester.get("timestamp"),
+                    "last_seen": tester.get("last_seen"),
+                    "days_since_install": days_since_install,
+                    "days_since_last_seen": days_since_last_seen
+                })
         
         # Sort by install date (newest first)
         testers.sort(key=lambda x: x.get("install_date", ""), reverse=True)
         
         total_testers = len(testers)
-        active_testers = len([t for t in testers if t["days_since_last_seen"] <= 1])
+        active_testers = len([t for t in testers if (t.get("days_since_last_seen") or float('inf')) <= 1])
         usage_events = sum(1 for t in testers if t.get("last_seen"))
+        total_installations = app.state.installations.get("total_installations", 0)
         
         # Generate HTML
         html_content = f"""
@@ -577,16 +583,16 @@ async def admin_clear_dashboard():
                 
                 <div class="stats">
                     <div class="stat-card">
+                        <div class="stat-number">{total_installations}</div>
+                        <div class="stat-label">Total Instalaciones</div>
+                    </div>
+                    <div class="stat-card">
                         <div class="stat-number">{total_testers}</div>
                         <div class="stat-label">Total Testers</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-number">{active_testers}</div>
                         <div class="stat-label">Activos (24h)</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-number">{usage_events}</div>
-                        <div class="stat-label">Eventos de Uso</div>
                     </div>
                 </div>
                 
@@ -618,8 +624,8 @@ async def admin_clear_dashboard():
             install_date = tester.get("install_date", "").split("T")[0] if tester.get("install_date") else "N/A"
             last_seen_date = tester.get("last_seen", "").split("T")[0] if tester.get("last_seen") else "N/A"
             days_since_last = tester.get("days_since_last_seen", 999)
-            status_class = "active" if days_since_last <= 1 else "inactive"
-            status_text = "🟢 Activo" if days_since_last <= 1 else "🔴 Inactivo"
+            status_class = "active" if (days_since_last or float('inf')) <= 1 else "inactive"
+            status_text = "🟢 Activo" if (days_since_last or float('inf')) <= 1 else "🔴 Inactivo"
             
             html_content += f"""
                             <tr>
@@ -653,21 +659,14 @@ async def admin_clear_dashboard():
         
     except Exception as e:
         print(f"Error generating dashboard: {e}")
-        return {"error": "Failed to generate dashboard"}, 500
+        return HTMLResponse(content=f"Error: {str(e)}", status_code=500)
 
-def _calculate_days_since(timestamp_str):
-    """Calculate days since a timestamp"""
-    if not timestamp_str:
-        return None
-    
-    try:
-        from datetime import datetime
-        timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
-        now = datetime.now(timestamp.tzinfo)
-        return (now - timestamp).days
-    except Exception:
-        return None
-
+@app.get("/admin/clear-dashboard")
+async def admin_clear_dashboard():
+    """Limpia el dashboard eliminando todos los testers registrados"""
+    cleared_data = clear_dashboard()
+    app.state.installations = cleared_data
+    return {"message": "Dashboard limpiado correctamente", "data": cleared_data}
 
 # Endpoint to get all real stations
 @app.get("/itv/estaciones")
@@ -683,10 +682,7 @@ def get_estaciones():
     print(f"Estaciones obtenidas: {len(estaciones)}")
     return {"estaciones": estaciones}
 
-
 # Endpoint to get upcoming real appointment dates and times (with cache)
-from fastapi import Request
-
 @app.get("/itv/fechas")
 async def get_fechas(request: Request, store: str, service: str, n: int = 3, force_refresh: bool = False):
     """Gets next available appointments for a station and service. Permite forzar datos frescos si se solicita."""
@@ -715,6 +711,7 @@ async def get_fechas(request: Request, store: str, service: str, n: int = 3, for
     except Exception as e:
         print(f"Error getting appointments: {e}")
         return {"fechas_horas": []}
+
 # Endpoint para estadísticas de notificaciones
 @app.get("/notifications/stats")
 def get_notification_stats():
@@ -873,11 +870,14 @@ def delete_tester(user_id: str):
         if not hasattr(app.state, 'installations'):
             app.state.installations = load_testers_data()
         
-        if user_id in app.state.installations:
-            del app.state.installations[user_id]
-            save_testers_data(app.state.installations)
-            return {"status": "success", "message": f"Tester {user_id} deleted."}
-        else:
-            return {"status": "not_found", "message": f"Tester {user_id} not found."}, 404
+        if "testers" in app.state.installations:
+            for i, tester in enumerate(app.state.installations["testers"]):
+                if tester["user_id"] == user_id:
+                    app.state.installations["testers"].pop(i)
+                    app.state.installations["total_installations"] -= 1
+                    save_testers_data(app.state.installations)
+                    return {"status": "success", "message": f"Tester {user_id} deleted."}
+            
+        return {"status": "not_found", "message": f"Tester {user_id} not found."}, 404
     except Exception as e:
         return {"status": "error", "message": str(e)}, 500
