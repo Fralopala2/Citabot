@@ -550,7 +550,6 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
     setState(() {
       buscandoFavoritos = true;
     });
-    final palabrasClave = categoriasServicios[categoriaSeleccionada] ?? [];
     // Depuración: mostrar favoritos y estaciones filtradas
     debugPrint('Favoritos seleccionados (raw): $favoritos');
     // Forzar comparación como string y mostrar IDs de estaciones
@@ -566,12 +565,16 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
     DateTime? fechaMinima;
     Map<String, List<Map<String, dynamic>>>? agrupadasMinima;
     String? nombreEstacionMinima;
+    String normalizar(String s) => s.toLowerCase()
+        .replaceAll('á','a').replaceAll('é','e').replaceAll('í','i')
+        .replaceAll('ó','o').replaceAll('ú','u').replaceAll('ü','u')
+        .replaceAll(' ','');
     for (final estacion in estacionesFiltradas) {
-      final storeId = estacion['store_id']?.toString();
-      final nombreEstacion =
+      final storeIdFav = estacion['store_id']?.toString();
+      final nombreEstacionFav =
           '${estacion['provincia'] ?? ''} - ${estacion['nombre'] ?? ''} (${estacion['tipo'] ?? ''})';
       final urlServicios = Uri.parse(
-        '${Config.serviciosUrl}?store_id=$storeId',
+        '${Config.serviciosUrl}?store_id=$storeIdFav',
       );
       try {
         final responseServicios = await http.get(urlServicios);
@@ -580,27 +583,27 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
           final servicios = List<Map<String, dynamic>>.from(
             dataServicios['servicios'] ?? [],
           );
-          // Filtro estricto: solo servicios "Turismo Diesel", "Turismo Gasolina" o "Turismo Electrico"
-          List<String> turismoValidos = [
-            'turismo diesel',
-            'turismo gasolina',
-            'turismo electrico',
-            'turismo eléctrico',
-          ];
-          String normalizar(String s) => s.toLowerCase().replaceAll('á','a').replaceAll('é','e').replaceAll('í','i').replaceAll('ó','o').replaceAll('ú','u').replaceAll('ü','u').replaceAll(' ','');
+          debugPrint('Estación $storeIdFav ($nombreEstacionFav) - TODOS los servicios:');
+          for (final s in servicios) {
+            debugPrint('  Servicio: "${s['nombre']}"');
+          }
           final serviciosFiltrados = servicios.where((s) {
-            final nombre = (s['nombre'] ?? '').toString().toLowerCase().replaceAll('á','a').replaceAll('é','e').replaceAll('í','i').replaceAll('ó','o').replaceAll('ú','u').replaceAll('ü','u').replaceAll(' ','');
-            // Solo aceptar si coincide exactamente con turismo diesel/gasolina/electrico
-            return turismoValidos.any((val) => nombre == val.replaceAll(' ',''));
+            final nombre = normalizar((s['nombre'] ?? '').toString());
+            bool esTurismo = nombre.contains('turismo');
+            bool esDiesel = nombre.contains('diesel');
+            bool esGasolina = nombre.contains('gasolina');
+            bool esElectrico = nombre.contains('electrico');
+            return esTurismo && (esDiesel || esGasolina || esElectrico);
           }).toList();
           debugPrint(
-            'Estación $storeId ($nombreEstacion) - Servicios TURISMO válidos: ${serviciosFiltrados.map((s) => s['nombre']).toList()}',
+            'Estación $storeIdFav ($nombreEstacionFav) - Servicios TURISMO válidos: ${serviciosFiltrados.map((s) => s['nombre']).toList()}',
           );
+          // Buscar la fecha mínima global entre todos los servicios válidos
           for (final servicio in serviciosFiltrados) {
             final serviceId = servicio['service'];
-            if (storeId == null || serviceId == null) continue;
+            if (storeIdFav == null || serviceId == null) continue;
             final urlFechas = Uri.parse(
-              '${Config.fechasUrl}?store=$storeId&service=$serviceId&n=10',
+              '${Config.fechasUrl}?store=$storeIdFav&service=$serviceId&n=10',
             );
             try {
               final responseFechas = await http.get(
@@ -630,7 +633,7 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
                     if (!agrupadas.containsKey(fecha)) agrupadas[fecha] = [];
                     agrupadas[fecha]!.add(f);
                   }
-                  // Buscar la fecha más próxima de esta estación (solo fechas futuras)
+                  // Buscar la fecha más próxima de este servicio (solo fechas futuras)
                   final hoy = DateTime.now();
                   for (final fechaStr in agrupadas.keys) {
                     try {
@@ -649,7 +652,7 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
                         );
                         fechaMinima = dt;
                         agrupadasMinima = {fechaStr: agrupadas[fechaStr]!};
-                        nombreEstacionMinima = nombreEstacion;
+                        nombreEstacionMinima = nombreEstacionFav;
                       }
                     } catch (e) {
                       debugPrint('Error parsing fecha $fechaStr: $e');
