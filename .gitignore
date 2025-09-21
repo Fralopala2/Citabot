@@ -43,6 +43,22 @@ citabot_app/windows/build/
 
 # VSCode project files
 .vscode/
+
+# IDEs
+.idea/
+*.iml
+
+# Documentation and internal files
+TRACKING_INSTALACIONES.md
+TODO.md
+NOTES.md
+DEVELOPMENT.md
+**/COOKIE_ID_FIXES_SUMMARY.md
+**/DEPLOYMENT.md
+README_INTERNAL.md
+docs_internal/
+development_docs/
+
 # Firebase/Google confidential files
 citabot_app/android/app/google-services.json
 citabot-backend/firebase-service-account.json
@@ -68,7 +84,7 @@ __pycache__/
 # C extensions
 *.so
 
-# Debug files
+# Development and debugging files
 *.log
 *.trace
 debug_*.bin
@@ -76,6 +92,11 @@ debug_*.html
 debug_*.txt
 debug_*.json
 backend.log
+check_*.py
+run.bat
+start_*.bat
+**/*backup*
+**/*temp*
 
 # Test files (no subir tests al repo)
 test_*.py
