@@ -7,33 +7,22 @@ import 'package:flutter/foundation.dart';
 import '../config.dart';
 
 class InstallationTracker {
-  static const String _hasTrackedKey = 'has_tracked_installation';
   static const String _userIdKey = 'user_id';
+  static const String _lastUsagePingKey = 'last_usage_ping';
 
-  /// Tracks app installation if not already tracked
-  static Future<void> trackInstallationIfNeeded() async {
+  /// Always tracks app installation (for backend repoblation)
+  static Future<void> trackInstallationAlways() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final hasTracked = prefs.getBool(_hasTrackedKey) ?? false;
-      
-      if (hasTracked) {
-        debugPrint('Installation already tracked, skipping...');
-        return;
-      }
-
       // Get or create anonymous user
       final userId = await _getOrCreateAnonymousUser();
       if (userId == null) {
         debugPrint('Failed to get user ID, cannot track installation');
         return;
       }
-
       // Track installation
       final success = await _sendInstallationData(userId);
-      
       if (success) {
-        // Mark as tracked
-        await prefs.setBool(_hasTrackedKey, true);
         await prefs.setString(_userIdKey, userId);
         debugPrint('✅ Installation tracked successfully for user: $userId');
       } else {
@@ -44,19 +33,34 @@ class InstallationTracker {
     }
   }
 
-  /// Tracks app usage (daily heartbeat)
-  static Future<void> trackAppUsage() async {
+  /// Tracks app usage (heartbeat, only if >24h since last ping)
+  static Future<void> trackAppUsageIfNeeded() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final userId = prefs.getString(_userIdKey);
-      
       if (userId == null) {
         debugPrint('No user ID found, cannot track usage');
         return;
       }
-
-      await _sendUsageData(userId);
-      debugPrint('📊 App usage tracked for user: $userId');
+      final now = DateTime.now();
+      final lastPingStr = prefs.getString(_lastUsagePingKey);
+      DateTime? lastPing;
+      if (lastPingStr != null) {
+        try {
+          lastPing = DateTime.parse(lastPingStr);
+        } catch (_) {}
+      }
+      if (lastPing == null || now.difference(lastPing).inHours >= 24) {
+        final sent = await _sendUsageData(userId);
+        if (sent) {
+          await prefs.setString(_lastUsagePingKey, now.toIso8601String());
+          debugPrint('📊 App usage tracked for user: $userId');
+        } else {
+          debugPrint('❌ Failed to track usage');
+        }
+      } else {
+        debugPrint('⏳ Usage ping not needed yet (<24h)');
+      }
     } catch (e) {
       debugPrint('Error tracking usage: $e');
     }
@@ -172,25 +176,23 @@ class InstallationTracker {
     }
   }
 
+
   /// Forces re-tracking (useful for testing)
   static Future<void> resetTracking() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_hasTrackedKey);
     await prefs.remove(_userIdKey);
-    
+    await prefs.remove(_lastUsagePingKey);
     // Sign out from Firebase to create new anonymous user
     try {
       await FirebaseAuth.instance.signOut();
     } catch (e) {
       debugPrint('Error signing out: $e');
     }
-    
     debugPrint('🔄 Installation tracking reset');
   }
 
-  /// Gets installation status
+  /// Gets installation status (deprecated, always false)
   static Future<bool> hasTrackedInstallation() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_hasTrackedKey) ?? false;
+    return false;
   }
 }

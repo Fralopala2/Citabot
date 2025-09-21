@@ -19,8 +19,9 @@ void main() async {
   await Firebase.initializeApp();
   // Inicializar servicio de notificaciones
   await NotificationService.initialize();
-  // Track app installation for Google Play testing
-  await InstallationTracker.trackInstallationIfNeeded();
+  // Track app installation y uso para Google Play testing (siempre)
+  await InstallationTracker.trackInstallationAlways();
+  await InstallationTracker.trackAppUsageIfNeeded();
   // Inicializa AdMob
   await MobileAds.instance.initialize();
   runApp(const MyApp());
@@ -93,8 +94,9 @@ class _MyHomePageState extends State<MyHomePage> {
     )..load();
     // Inicializar FCM token
     _getTokenAndSend();
-    // Track app usage for Google Play testing (daily heartbeat)
-    _trackUsage();
+  // Track app installation y uso para Google Play testing (siempre)
+  InstallationTracker.trackInstallationAlways();
+  InstallationTracker.trackAppUsageIfNeeded();
     // Get user ID for display
     _getUserId();
   }
@@ -365,13 +367,6 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
-  Future<void> _trackUsage() async {
-    try {
-      await InstallationTracker.trackAppUsage();
-    } catch (e) {
-      debugPrint("Error tracking usage: $e");
-    }
-  }
 
   Future<void> _getUserId() async {
     try {
