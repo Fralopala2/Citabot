@@ -257,30 +257,59 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<void> buscarFechas() async {
     if (estacionSeleccionada == null || tipoSeleccionado == null) return;
+    
     final storeId = estacionSeleccionada['store_id'];
     final serviceId = tipoSeleccionado['service'];
     final url = Uri.parse(
-      '${Config.fechasUrl}?store=$storeId&service=$serviceId&n=3',
+      '${Config.fechasUrl}?store=$storeId&service=$serviceId&n=10',
     );
+    
     String mensaje = 'No hay fechas disponibles.';
+    
     try {
-      final response = await http.get(url);
+      final response = await http.get(
+        url,
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+        },
+      );
+      
       if (response.statusCode == 200 && response.body.isNotEmpty) {
         final data = jsonDecode(response.body);
-        final fechas = data['fechas'] as List<dynamic>?;
+        // FIX: Use 'fechas_horas' not 'fechas' to match backend response
+        final fechas = data['fechas_horas'] as List<dynamic>?;
+        
         if (fechas != null && fechas.isNotEmpty) {
-          // Mostrar solo fechas válidas (filtrar claves tipo 'n0')
-          final fechasValidas = fechas
-              .where((f) => f is String && !f.startsWith('n'))
-              .toList();
-          if (fechasValidas.isNotEmpty) {
-            mensaje = 'Fechas disponibles:\n${fechasValidas.join('\n')}';
+          // Group by date and show formatted
+          final Map<String, List<String>> fechasPorDia = {};
+          for (var f in fechas) {
+            final fecha = f['fecha'] ?? '';
+            final hora = f['hora'] ?? '';
+            if (fecha.isNotEmpty && hora.isNotEmpty) {
+              if (!fechasPorDia.containsKey(fecha)) fechasPorDia[fecha] = [];
+              fechasPorDia[fecha]!.add(hora);
+            }
+          }
+          
+          if (fechasPorDia.isNotEmpty) {
+            final buffer = StringBuffer();
+            fechasPorDia.forEach((fecha, horas) {
+              buffer.writeln('$fecha:');
+              for (String hora in horas) {
+                buffer.writeln('  • $hora');
+              }
+              buffer.writeln();
+            });
+            mensaje = buffer.toString().trim();
           }
         }
       }
     } catch (e) {
-      mensaje = 'Error de conexion: $e';
+      mensaje = 'Error de conexión: $e';
     }
+    
     if (!mounted) return;
     showDialog(
       context: context,
