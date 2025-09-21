@@ -530,29 +530,45 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
       );
       return;
     }
-    // Mostrar pantalla de selección de categoría unificada
+    // Selector de categoría (solo 'Turismo')
     final categoriaSeleccionada = await showDialog<String>(
       context: context,
       builder: (context) => SimpleDialog(
         title: const Text('Selecciona tipo de servicio'),
-        children: categoriasServicios.keys
+        children: [
+          SimpleDialogOption(
+            child: const Text('Turismo'),
+            onPressed: () => Navigator.pop(context, 'Turismo'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (categoriaSeleccionada == null) return;
+
+    // Selector de subtipo (diésel, gasolina, eléctrico)
+    final List<String> subtipos = ['diésel', 'gasolina', 'eléctrico'];
+    final subtipoSeleccionado = await showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Selecciona subtipo de Turismo'),
+        children: subtipos
             .map(
-              (cat) => SimpleDialogOption(
-                child: Text(cat),
-                onPressed: () => Navigator.pop(context, cat),
+              (sub) => SimpleDialogOption(
+                child: Text(sub[0].toUpperCase() + sub.substring(1)),
+                onPressed: () => Navigator.pop(context, sub),
               ),
             )
             .toList(),
       ),
     );
     if (!mounted) return;
-    if (categoriaSeleccionada == null) return;
+    if (subtipoSeleccionado == null) return;
+
     setState(() {
       buscandoFavoritos = true;
     });
-    // Depuración: mostrar favoritos y estaciones filtradas
     debugPrint('Favoritos seleccionados (raw): $favoritos');
-    // Forzar comparación como string y mostrar IDs de estaciones
     final favoritosSet = favoritos.map((f) => f.toString()).toSet();
     final estacionesFiltradas = estaciones
         .where((e) => favoritosSet.contains(e['store_id'].toString()))
@@ -561,7 +577,6 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
       'Estaciones filtradas (solo favoritas): ${estacionesFiltradas.map((e) => e['store_id']).toList()}',
     );
 
-    // Buscar en todas las estaciones favoritas seleccionadas y encontrar la primera fecha global
     DateTime? fechaMinima;
     Map<String, List<Map<String, dynamic>>>? agrupadasMinima;
     String? nombreEstacionMinima;
@@ -569,6 +584,7 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
         .replaceAll('á','a').replaceAll('é','e').replaceAll('í','i')
         .replaceAll('ó','o').replaceAll('ú','u').replaceAll('ü','u')
         .replaceAll(' ','');
+    final subtipoNorm = normalizar(subtipoSeleccionado);
     for (final estacion in estacionesFiltradas) {
       final storeIdFav = estacion['store_id']?.toString();
       final nombreEstacionFav =
@@ -587,18 +603,15 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
           for (final s in servicios) {
             debugPrint('  Servicio: "${s['nombre']}"');
           }
+          // Filtrar solo servicios de la categoría y subtipo seleccionados
           final serviciosFiltrados = servicios.where((s) {
             final nombre = normalizar((s['nombre'] ?? '').toString());
-            bool esTurismo = nombre.contains('turismo');
-            bool esDiesel = nombre.contains('diesel');
-            bool esGasolina = nombre.contains('gasolina');
-            bool esElectrico = nombre.contains('electrico');
-            return esTurismo && (esDiesel || esGasolina || esElectrico);
+            final catNorm = normalizar(categoriaSeleccionada);
+            return nombre.contains(catNorm) && nombre.contains(subtipoNorm);
           }).toList();
           debugPrint(
-            'Estación $storeIdFav ($nombreEstacionFav) - Servicios TURISMO válidos: ${serviciosFiltrados.map((s) => s['nombre']).toList()}',
+            'Estación $storeIdFav ($nombreEstacionFav) - Servicios válidos: ${serviciosFiltrados.map((s) => s['nombre']).toList()}',
           );
-          // Buscar la fecha mínima global entre todos los servicios válidos
           for (final servicio in serviciosFiltrados) {
             final serviceId = servicio['service'];
             if (storeIdFav == null || serviceId == null) continue;
@@ -626,26 +639,21 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
                 debugPrint('Fechas parsed: $fechas');
 
                 if (fechas != null && fechas.isNotEmpty) {
-                  // Agrupar por fecha
                   final Map<String, List<Map<String, dynamic>>> agrupadas = {};
                   for (var f in fechas) {
                     final fecha = f['fecha'] ?? '';
                     if (!agrupadas.containsKey(fecha)) agrupadas[fecha] = [];
                     agrupadas[fecha]!.add(f);
                   }
-                  // Buscar la fecha más próxima de este servicio (solo fechas futuras)
                   final hoy = DateTime.now();
                   for (final fechaStr in agrupadas.keys) {
                     try {
                       final dt = DateTime.parse(fechaStr);
                       debugPrint('Evaluando fecha: $fechaStr -> $dt');
-
-                      // Solo considerar fechas de hoy en adelante
                       if (dt.isBefore(DateTime(hoy.year, hoy.month, hoy.day))) {
                         debugPrint('Fecha $fechaStr es del pasado, ignorando');
                         continue;
                       }
-
                       if (fechaMinima == null || dt.isBefore(fechaMinima)) {
                         debugPrint(
                           'Nueva fecha mínima: $fechaStr (anterior: $fechaMinima)',
