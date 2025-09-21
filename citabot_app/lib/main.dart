@@ -12,12 +12,15 @@ import 'categorias_servicio.dart';
 // ignore: unused_import
 import 'seleccionar_servicio_screen.dart';
 import 'services/notification_service.dart';
+import 'services/installation_tracker.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
   // Inicializar servicio de notificaciones
   await NotificationService.initialize();
+  // Track app installation for Google Play testing
+  await InstallationTracker.trackInstallationIfNeeded();
   // Inicializa AdMob
   await MobileAds.instance.initialize();
   runApp(const MyApp());
@@ -90,6 +93,8 @@ class _MyHomePageState extends State<MyHomePage> {
     )..load();
     // Inicializar FCM token
     _getTokenAndSend();
+    // Track app usage for Google Play testing (daily heartbeat)
+    _trackUsage();
   }
 
   @override
@@ -354,6 +359,14 @@ class _MyHomePageState extends State<MyHomePage> {
       }
     } catch (e) {
       debugPrint("Error de conexión: $e");
+    }
+  }
+
+  Future<void> _trackUsage() async {
+    try {
+      await InstallationTracker.trackAppUsage();
+    } catch (e) {
+      debugPrint("Error tracking usage: $e");
     }
   }
 

@@ -310,6 +310,122 @@ def clear_all_tokens_endpoint():
         return {"error": "Failed to clear tokens"}, 500
 
 
+# Installation tracking endpoints
+@app.post("/track-installation")
+async def track_installation(request: Request):
+    """Track app installation by a tester"""
+    try:
+        data = await request.json()
+        user_id = data.get("user_id")
+        platform = data.get("platform", "unknown")
+        app_version = data.get("app_version", "unknown")
+        timestamp = data.get("timestamp")
+        
+        if not user_id:
+            return {"error": "user_id is required"}, 400
+        
+        # Store installation data
+        installation_data = {
+            "user_id": user_id,
+            "platform": platform,
+            "app_version": app_version,
+            "timestamp": timestamp,
+            "event_type": "install",
+            "last_seen": timestamp
+        }
+        
+        # Add to installations tracking (in-memory for now, could be database later)
+        if not hasattr(app.state, 'installations'):
+            app.state.installations = {}
+        
+        app.state.installations[user_id] = installation_data
+        
+        print(f"📱 Installation tracked: User {user_id} on {platform} v{app_version}")
+        
+        return {
+            "status": "success",
+            "message": "Installation tracked successfully",
+            "user_id": user_id,
+            "total_installations": len(app.state.installations)
+        }
+        
+    except Exception as e:
+        print(f"Error tracking installation: {e}")
+        return {"error": "Failed to track installation"}, 500
+
+@app.post("/track-usage")
+async def track_usage(request: Request):
+    """Track app usage (daily heartbeat)"""
+    try:
+        data = await request.json()
+        user_id = data.get("user_id")
+        timestamp = data.get("timestamp")
+        
+        if not user_id:
+            return {"error": "user_id is required"}, 400
+        
+        # Update last seen timestamp
+        if hasattr(app.state, 'installations') and user_id in app.state.installations:
+            app.state.installations[user_id]["last_seen"] = timestamp
+            print(f"📊 Usage tracked: User {user_id}")
+            
+            return {
+                "status": "success", 
+                "message": "Usage tracked successfully"
+            }
+        else:
+            return {"error": "User not found in installations"}, 404
+        
+    except Exception as e:
+        print(f"Error tracking usage: {e}")
+        return {"error": "Failed to track usage"}, 500
+
+@app.get("/admin/testers")
+def get_testers_status():
+    """Get installation status of all testers (admin endpoint)"""
+    try:
+        if not hasattr(app.state, 'installations'):
+            app.state.installations = {}
+        
+        testers = []
+        for user_id, data in app.state.installations.items():
+            testers.append({
+                "user_id": user_id,
+                "platform": data.get("platform", "unknown"),
+                "app_version": data.get("app_version", "unknown"),
+                "install_date": data.get("timestamp"),
+                "last_seen": data.get("last_seen"),
+                "days_since_install": _calculate_days_since(data.get("timestamp")),
+                "days_since_last_seen": _calculate_days_since(data.get("last_seen"))
+            })
+        
+        # Sort by install date (newest first)
+        testers.sort(key=lambda x: x.get("install_date", ""), reverse=True)
+        
+        return {
+            "total_testers": len(testers),
+            "active_installations": len([t for t in testers if t["days_since_last_seen"] <= 1]),
+            "testers": testers
+        }
+        
+    except Exception as e:
+        print(f"Error getting testers status: {e}")
+        return {"error": "Failed to get testers status"}, 500
+
+def _calculate_days_since(timestamp_str):
+    """Calculate days since a timestamp"""
+    if not timestamp_str:
+        return None
+    
+    try:
+        from datetime import datetime
+        timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+        now = datetime.now(timestamp.tzinfo)
+        return (now - timestamp).days
+    except Exception:
+        return None
+
+
 # Endpoint to get all real stations
 @app.get("/itv/estaciones")
 def get_estaciones():
