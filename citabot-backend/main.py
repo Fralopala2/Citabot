@@ -68,16 +68,32 @@ def health_check():
 @app.get("/health")
 def detailed_health_check():
     """Detailed health check for server initialization status"""
-    # Consider server ready if it has cache entries or has been handling requests
-    server_ready = len(slots_cache) > 0 or time.time() > (startup_time + 45)
+    # Test if we can actually get stations to determine if server is ready
+    server_ready = False
+    stations_available = False
+    
+    try:
+        # Try to get stations to verify the scraper actually works
+        group_data = scraper.get_group_startup("", "1")
+        estaciones = scraper.extract_stations(group_data)
+        stations_available = len(estaciones) > 0
+        
+        # Server is ready if we can get stations OR we have cache entries
+        server_ready = stations_available or len(slots_cache) > 0
+        
+    except Exception as e:
+        print(f"⚠️ Health check station test failed: {e}")
+        # Fallback: consider ready after 2 minutes if station test fails
+        server_ready = time.time() > (startup_time + 120)
     
     details = {
         "status": "ready" if server_ready else "initializing",
         "server_ready": server_ready,
+        "stations_available": stations_available,
         "firebase_enabled": is_firebase_enabled(),
         "cache_entries": len(slots_cache),
         "services": {
-            "scraper": True,  # Always available
+            "scraper": stations_available,  # Based on actual test
             "notifications": is_firebase_enabled(),
             "cache": True
         },
