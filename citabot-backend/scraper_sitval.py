@@ -141,6 +141,134 @@ class SitValScraper:
         
         if not html_content or html_content.strip() == "":
             return []
+
+    def get_group_startup(self, instance_code: str = "", group: str = "1") -> str:
+        """Get group startup data - simplified version for stations list"""
+        try:
+            # Get main page first to establish session
+            main_response = self._make_request(self.BASE_URL)
+            
+            # Try to get stations data
+            data = {
+                "module": "startup",
+                "group": group
+            }
+            
+            response = self._make_request(
+                self.AJAX_URL,
+                method="POST",
+                data=data,
+                headers={"X-Requested-With": "XMLHttpRequest"}
+            )
+            
+            return response.text
+            
+        except Exception as e:
+            print(f"⚠️ Error getting group startup data: {e}")
+            return ""
+
+    def extract_stations(self, html_content: str) -> List[Dict[str, Any]]:
+        """Extract stations list from HTML content"""
+        stations = []
+        
+        if not html_content:
+            return stations
+            
+        try:
+            soup = BeautifulSoup(html_content, 'html.parser')
+            
+            # Look for station options in select elements
+            select_elements = soup.find_all('select')
+            
+            for select in select_elements:
+                options = select.find_all('option')
+                for option in options:
+                    value = option.get('value')
+                    text = option.text.strip()
+                    
+                    if value and text and value != '0':  # Skip default options
+                        # Try to parse the station info
+                        station_info = self._parse_station_info(text, value)
+                        if station_info:
+                            stations.append(station_info)
+            
+            # If no stations found in selects, try alternative methods
+            if not stations:
+                stations = self._extract_stations_fallback(html_content)
+                
+        except Exception as e:
+            print(f"⚠️ Error extracting stations: {e}")
+            
+        return stations
+
+    def _parse_station_info(self, text: str, value: str) -> Optional[Dict[str, Any]]:
+        """Parse station information from option text"""
+        try:
+            # Common patterns for station text
+            # Example: "VALENCIA - Valencia Centro (ITV)"
+            parts = text.split(' - ')
+            
+            if len(parts) >= 2:
+                provincia = parts[0].strip()
+                resto = parts[1].strip()
+                
+                # Try to separate name and type
+                if '(' in resto and ')' in resto:
+                    nombre = resto.split('(')[0].strip()
+                    tipo = resto.split('(')[1].replace(')', '').strip()
+                else:
+                    nombre = resto
+                    tipo = "ITV"
+                
+                return {
+                    "store_id": value,
+                    "provincia": provincia,
+                    "nombre": nombre,
+                    "tipo": tipo
+                }
+            else:
+                # Simple format
+                return {
+                    "store_id": value,
+                    "provincia": "Unknown",
+                    "nombre": text,
+                    "tipo": "ITV"
+                }
+                
+        except Exception as e:
+            print(f"⚠️ Error parsing station info for '{text}': {e}")
+            
+        return None
+
+    def _extract_stations_fallback(self, html_content: str) -> List[Dict[str, Any]]:
+        """Fallback method to extract stations using regex"""
+        stations = []
+        
+        try:
+            # Look for common patterns in HTML
+            patterns = [
+                r'value="(\d+)"[^>]*>([^<]+)</option>',
+                r'data-id="(\d+)"[^>]*>([^<]+)',
+                r'"id":"(\d+)"[^}]*"name":"([^"]+)"'
+            ]
+            
+            for pattern in patterns:
+                matches = re.findall(pattern, html_content)
+                for match in matches:
+                    if len(match) == 2:
+                        store_id, name = match
+                        if store_id and name.strip() and store_id != '0':
+                            stations.append({
+                                "store_id": store_id,
+                                "provincia": "Unknown",
+                                "nombre": name.strip(),
+                                "tipo": "ITV"
+                            })
+                            
+        except Exception as e:
+            print(f"⚠️ Error in fallback station extraction: {e}")
+            
+        return stations
         
         appointments = []
         
