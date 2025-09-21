@@ -50,6 +50,7 @@ citabot_app/windows/build/
 
 # Documentation and internal files
 TRACKING_INSTALACIONES.md
+FIREBASE_SETUP.md
 TODO.md
 NOTES.md
 DEVELOPMENT.md

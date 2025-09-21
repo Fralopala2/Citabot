@@ -77,10 +77,32 @@ class InstallationTracker {
       User? currentUser = auth.currentUser;
       
       if (currentUser == null) {
-        // Sign in anonymously
+        // Try to sign in anonymously with Firebase
         debugPrint('Creating anonymous Firebase user...');
-        final userCredential = await auth.signInAnonymously();
-        currentUser = userCredential.user;
+        try {
+          final userCredential = await auth.signInAnonymously();
+          currentUser = userCredential.user;
+        } catch (e) {
+          debugPrint('Firebase Auth failed: $e');
+          debugPrint('Falling back to local UUID generation...');
+          
+          // Fallback: Generate local UUID if Firebase Auth is not configured
+          final prefs = await SharedPreferences.getInstance();
+          String? localUserId = prefs.getString('local_user_id');
+          
+          if (localUserId == null) {
+            // Generate a unique ID based on timestamp and random
+            final now = DateTime.now().millisecondsSinceEpoch;
+            final random = (DateTime.now().microsecondsSinceEpoch % 10000);
+            localUserId = 'local_${now}_$random';
+            await prefs.setString('local_user_id', localUserId);
+            debugPrint('Generated local user ID: $localUserId');
+          } else {
+            debugPrint('Using existing local user ID: $localUserId');
+          }
+          
+          return localUserId;
+        }
       }
       
       if (currentUser != null) {
