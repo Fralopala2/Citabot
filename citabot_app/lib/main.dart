@@ -580,19 +580,21 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
           final servicios = List<Map<String, dynamic>>.from(
             dataServicios['servicios'] ?? [],
           );
-          // Solo buscar servicios equivalentes a la categoría seleccionada
+          // Filtro estricto: solo servicios "Turismo Diesel", "Turismo Gasolina" o "Turismo Electrico"
+          List<String> turismoValidos = [
+            'turismo diesel',
+            'turismo gasolina',
+            'turismo electrico',
+            'turismo eléctrico',
+          ];
+          String normalizar(String s) => s.toLowerCase().replaceAll('á','a').replaceAll('é','e').replaceAll('í','i').replaceAll('ó','o').replaceAll('ú','u').replaceAll('ü','u').replaceAll(' ','');
           final serviciosFiltrados = servicios.where((s) {
-            final nombre = (s['nombre'] ?? '').toString().toLowerCase().replaceAll(' ', '');
-            // Coincidencia por startsWith (case-insensitive, sin espacios)
-            final match = palabrasClave.any((kw) {
-              final kwNorm = kw.toLowerCase().replaceAll(' ', '');
-              return nombre.startsWith(kwNorm);
-            });
-            debugPrint('Servicio: "${s['nombre']}" - Match: $match con palabras: $palabrasClave');
-            return match;
+            final nombre = (s['nombre'] ?? '').toString().toLowerCase().replaceAll('á','a').replaceAll('é','e').replaceAll('í','i').replaceAll('ó','o').replaceAll('ú','u').replaceAll('ü','u').replaceAll(' ','');
+            // Solo aceptar si coincide exactamente con turismo diesel/gasolina/electrico
+            return turismoValidos.any((val) => nombre == val.replaceAll(' ',''));
           }).toList();
           debugPrint(
-            'Estación $storeId ($nombreEstacion) - Servicios equivalentes: ${serviciosFiltrados.map((s) => s['nombre']).toList()}',
+            'Estación $storeId ($nombreEstacion) - Servicios TURISMO válidos: ${serviciosFiltrados.map((s) => s['nombre']).toList()}',
           );
           for (final servicio in serviciosFiltrados) {
             final serviceId = servicio['service'];
