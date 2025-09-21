@@ -278,23 +278,26 @@ def get_servicios(store_id: str):
 # Endpoint para registrar el token FCM
 @app.post("/register-token")
 async def register_token_endpoint(request: Request):
+    """Registra un token FCM junto con user_id y favoritos"""
     try:
         data = await request.json()
         token = data.get("token")
-        
+        user_id = data.get("user_id")
+        favoritos = data.get("favoritos")  # Debe ser lista de estaciones favoritas
         if not token:
             return {"error": "Token is required"}, 400
-        
-        success = register_device_token(token)
+        # Validar favoritos como lista
+        if favoritos is not None and not isinstance(favoritos, list):
+            return {"error": "Favoritos debe ser una lista"}, 400
+        success = register_device_token(token, user_id=user_id, favoritos=favoritos)
         if success:
             return {
-                "status": "success", 
+                "status": "success",
                 "message": "Token registered successfully",
                 "registered_devices": get_registered_tokens_count()
             }
         else:
             return {"error": "Invalid token format"}, 400
-            
     except Exception as e:
         print(f"Error registering token: {e}")
         return {"error": "Failed to register token"}, 500

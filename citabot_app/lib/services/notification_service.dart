@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../config.dart';
+import 'installation_tracker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class NotificationService {
   static final FirebaseMessaging _firebaseMessaging =
@@ -40,9 +42,13 @@ class NotificationService {
       String? token = await _firebaseMessaging.getToken();
       if (token != null && token != _currentToken) {
         _currentToken = token;
-        await _registerTokenWithBackend(token);
+        // Obtener user_id y favoritos antes de registrar el token
+        String? userId = await InstallationTracker.getUserId();
+        final prefs = await SharedPreferences.getInstance();
+        List<String> favoritos = prefs.getStringList('favoritos') ?? [];
+        await _registerTokenWithBackend(token, userId: userId, favoritos: favoritos);
         debugPrint(
-          'Token FCM obtenido y registrado: ${token.substring(0, 20)}...',
+          'Token FCM obtenido y registrado: \\${token.substring(0, 20)}...',
         );
       }
     } catch (e) {
@@ -50,21 +56,26 @@ class NotificationService {
     }
   }
 
-  static Future<void> _registerTokenWithBackend(String token) async {
+  static Future<void> _registerTokenWithBackend(String token, {String? userId, List<String>? favoritos}) async {
     try {
+      final body = {
+        'token': token,
+        if (userId != null) 'user_id': userId,
+        if (favoritos != null) 'favoritos': favoritos,
+      };
       final response = await http.post(
         Uri.parse(Config.registerTokenUrl),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'token': token}),
+        body: jsonEncode(body),
       );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         debugPrint(
-          'Token registrado exitosamente. Dispositivos registrados: ${data['registered_devices']}',
+          'Token registrado exitosamente. Dispositivos registrados: \\${data['registered_devices']}',
         );
       } else {
-        debugPrint('Error registrando token: ${response.statusCode}');
+        debugPrint('Error registrando token: \\${response.statusCode}');
       }
     } catch (e) {
       debugPrint('Error enviando token al backend: $e');
