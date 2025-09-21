@@ -7,7 +7,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from notifier import register_device_token, send_new_appointment_notification, get_registered_tokens_count, is_firebase_enabled
 from scraper_sitval import SitValScraper
 
-
+# Server startup time for health checks
+startup_time = time.time()
 
 scraper = SitValScraper()
 app = FastAPI(
@@ -63,6 +64,27 @@ def health_check():
         "version": "1.0.0",
         "cache_entries": len(slots_cache)
     }
+
+@app.get("/health")
+def detailed_health_check():
+    """Detailed health check for server initialization status"""
+    # Consider server ready if it has cache entries or has been handling requests
+    server_ready = len(slots_cache) > 0 or time.time() > (startup_time + 45)
+    
+    details = {
+        "status": "ready" if server_ready else "initializing",
+        "server_ready": server_ready,
+        "firebase_enabled": is_firebase_enabled(),
+        "cache_entries": len(slots_cache),
+        "services": {
+            "scraper": True,  # Always available
+            "notifications": is_firebase_enabled(),
+            "cache": True
+        },
+        "uptime_seconds": int(time.time() - startup_time)
+    }
+    
+    return details
 
 def cache_key(store, service):
     return f"{store}:{service}"

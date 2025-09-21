@@ -104,23 +104,119 @@ class _MyHomePageState extends State<MyHomePage> {
   dynamic tipoSeleccionado;
   bool cargandoEstaciones = false;
   bool cargandoTipos = false;
+  bool servidorInicializando = false;
+  String mensajeCarga = "Cargando estaciones...";
+
+  Future<bool> _checkServerStatus() async {
+    try {
+      final baseUrl = Config.estacionesUrl.replaceAll('/itv/estaciones', '');
+      final healthUrl = Uri.parse('$baseUrl/health');
+      final response = await http.get(healthUrl).timeout(Duration(seconds: 10));
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final serverReady = data['server_ready'] ?? false;
+        
+        setState(() {
+          servidorInicializando = !serverReady;
+          if (servidorInicializando) {
+            mensajeCarga = "El servidor se está inicializando...\nEsto puede tardar hasta 1 minuto.";
+          } else {
+            mensajeCarga = "Cargando estaciones...";
+          }
+        });
+        
+        return serverReady;
+      }
+    } catch (e) {
+      // Si no podemos verificar el estado, asumimos que está inicializando
+      setState(() {
+        servidorInicializando = true;
+        mensajeCarga = "Conectando con el servidor...\nEsto puede tardar hasta 1 minuto.";
+      });
+    }
+    return false;
+  }
 
   Future<void> cargarEstaciones() async {
     setState(() {
       cargandoEstaciones = true;
+      mensajeCarga = "Conectando...";
     });
+    
+    // Verificar estado del servidor
+    final serverReady = await _checkServerStatus();
+    
+    if (!serverReady) {
+      // Si el servidor no está listo, intentar cada 5 segundos hasta que esté listo
+      await _waitForServerReady();
+    }
+    
     final url = Uri.parse(Config.estacionesUrl);
     try {
-      final response = await http.get(url);
+      setState(() {
+        mensajeCarga = "Cargando estaciones...";
+        servidorInicializando = false;
+      });
+      
+      final response = await http.get(url).timeout(Duration(seconds: 15));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         estaciones = data['estaciones'];
+        
+        // Mostrar mensaje de éxito brevemente
+        setState(() {
+          mensajeCarga = "¡Estaciones cargadas correctamente!";
+        });
+        
+        // Esperar un momento para mostrar el mensaje de éxito
+        await Future.delayed(Duration(milliseconds: 1000));
+      } else {
+        throw Exception('Error del servidor: ${response.statusCode}');
       }
     } catch (e) {
       estaciones = [];
+      setState(() {
+        mensajeCarga = "Error al cargar estaciones. Reintentando...";
+      });
+      
+      // Reintentar después de 3 segundos
+      Future.delayed(Duration(seconds: 3), () {
+        if (mounted) cargarEstaciones();
+      });
     }
+    
     setState(() {
       cargandoEstaciones = false;
+    });
+  }
+
+  Future<void> _waitForServerReady() async {
+    int maxRetries = 24; // 24 * 5 segundos = 2 minutos máximo
+    int retries = 0;
+    
+    while (retries < maxRetries) {
+      await Future.delayed(Duration(seconds: 5));
+      
+      final serverReady = await _checkServerStatus();
+      if (serverReady) {
+        setState(() {
+          servidorInicializando = false;
+          mensajeCarga = "¡Servidor listo! Cargando estaciones...";
+        });
+        return;
+      }
+      
+      retries++;
+      setState(() {
+        mensajeCarga = "El servidor se está inicializando...\nReintentando en 5 segundos... ($retries/$maxRetries)";
+      });
+    }
+    
+    // Si llegamos aquí, el servidor tardó demasiado
+    setState(() {
+      servidorInicializando = false;
+      mensajeCarga = "El servidor está tardando más de lo esperado. Reintentando...";
     });
   }
 
@@ -530,6 +626,8 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
   dynamic servicioSeleccionado;
   bool cargandoEstaciones = false;
   bool cargandoFechas = false;
+  bool servidorInicializando = false;
+  String mensajeCarga = "Cargando estaciones...";
 
   @override
   void initState() {
@@ -561,27 +659,112 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
     super.dispose();
   }
 
+  Future<bool> _checkServerStatus() async {
+    try {
+      final baseUrl = Config.estacionesUrl.replaceAll('/itv/estaciones', '');
+      final healthUrl = Uri.parse('$baseUrl/health');
+      final response = await http.get(healthUrl).timeout(Duration(seconds: 10));
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final serverReady = data['server_ready'] ?? false;
+        
+        setState(() {
+          servidorInicializando = !serverReady;
+          if (servidorInicializando) {
+            mensajeCarga = "El servidor se está inicializando...\nEsto puede tardar hasta 1 minuto.";
+          } else {
+            mensajeCarga = "Cargando estaciones...";
+          }
+        });
+        
+        return serverReady;
+      }
+    } catch (e) {
+      setState(() {
+        servidorInicializando = true;
+        mensajeCarga = "Conectando con el servidor...\nEsto puede tardar hasta 1 minuto.";
+      });
+    }
+    return false;
+  }
+
+  Future<void> _waitForServerReady() async {
+    int maxRetries = 24;
+    int retries = 0;
+    
+    while (retries < maxRetries) {
+      await Future.delayed(Duration(seconds: 5));
+      
+      final serverReady = await _checkServerStatus();
+      if (serverReady) {
+        setState(() {
+          servidorInicializando = false;
+          mensajeCarga = "¡Servidor listo! Cargando estaciones...";
+        });
+        return;
+      }
+      
+      retries++;
+      setState(() {
+        mensajeCarga = "El servidor se está inicializando...\nReintentando en 5 segundos... ($retries/$maxRetries)";
+      });
+    }
+    
+    setState(() {
+      servidorInicializando = false;
+      mensajeCarga = "El servidor está tardando más de lo esperado. Reintentando...";
+    });
+  }
+
   Future<void> cargarEstaciones() async {
     setState(() {
       cargandoEstaciones = true;
+      mensajeCarga = "Conectando...";
     });
+    
+    // Verificar estado del servidor
+    final serverReady = await _checkServerStatus();
+    
+    if (!serverReady) {
+      await _waitForServerReady();
+    }
+    
     final url = Uri.parse(Config.estacionesUrl);
     try {
-      final response = await http.get(url);
+      setState(() {
+        mensajeCarga = "Cargando estaciones...";
+        servidorInicializando = false;
+      });
+      
+      final response = await http.get(url).timeout(Duration(seconds: 15));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         estaciones = data['estaciones'];
+        
+        setState(() {
+          mensajeCarga = "¡Estaciones cargadas correctamente!";
+        });
+        
+        await Future.delayed(Duration(milliseconds: 1000));
+      } else {
+        throw Exception('Error del servidor: ${response.statusCode}');
       }
-      setState(() {
-        cargandoEstaciones = false;
-      });
     } catch (e) {
       estaciones = [];
       debugPrint('Error al cargar estaciones: $e');
       setState(() {
-        cargandoEstaciones = false;
+        mensajeCarga = "Error al cargar estaciones. Reintentando...";
+      });
+      
+      Future.delayed(Duration(seconds: 3), () {
+        if (mounted) cargarEstaciones();
       });
     }
+    
+    setState(() {
+      cargandoEstaciones = false;
+    });
   }
 
   Future<void> cargarServiciosDisponibles() async {
@@ -744,16 +927,30 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
                 cargandoEstaciones
                     ? Column(
                         children: [
-                          const CircularProgressIndicator(),
+                          CircularProgressIndicator(
+                            color: servidorInicializando ? Colors.orange : Colors.deepPurple,
+                          ),
                           const SizedBox(height: 12),
-                          const Text(
-                            'Cargando estaciones, por favor espera...',
+                          Text(
+                            mensajeCarga,
+                            textAlign: TextAlign.center,
                             style: TextStyle(
                               fontSize: 14,
-                              color: Colors.deepPurple,
+                              color: servidorInicializando ? Colors.orange[700] : Colors.deepPurple,
                               fontStyle: FontStyle.italic,
                             ),
                           ),
+                          if (servidorInicializando) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              '⏱️ Render está iniciando el servidor...',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                          ],
                         ],
                       )
                     : Padding(

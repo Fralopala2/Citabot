@@ -10,7 +10,7 @@ Citabot is a Flutter app for Android that automates the search for available app
 
 ### 🔔 **Automatic Push Notifications**
 
-- **Real-time monitoring**: Backend checks for new appointments every 30 minutes
+- **Real-time monitoring**: Backend checks for new free appointments every 1 hour
 - **Firebase Cloud Messaging (FCM)**: Notifications work even when app is closed
 - **Smart detection**: Only notifies when genuinely new appointments appear
 - **Works 24/7**: No need to keep the app open or check manually
