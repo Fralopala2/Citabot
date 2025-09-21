@@ -39,6 +39,16 @@ def save_testers_data(installations_dict):
         print(f"❌ Error saving testers data: {e}")
         return False
 
+def clear_dashboard():
+    """Borra todos los testers registrados y reinicia el contador de instalaciones"""
+    empty_dashboard = {
+        "testers": [],
+        "total_installations": 0
+    }
+    save_testers_data(empty_dashboard)
+    print("🧹 Dashboard limpiado - todos los testers eliminados")
+    return empty_dashboard
+
 scraper = SitValScraper()
 app = FastAPI(
     title="Citabot API",
@@ -465,6 +475,13 @@ def get_testers_status():
 @app.get("/admin/dashboard")
 def get_testers_dashboard():
     """HTML dashboard for testers tracking"""
+
+@app.get("/admin/clear-dashboard")
+async def admin_clear_dashboard():
+    """Limpia el dashboard eliminando todos los testers registrados"""
+    cleared_data = clear_dashboard()
+    app.state.installations = cleared_data
+    return {"message": "Dashboard limpiado correctamente", "data": cleared_data}
     try:
         if not hasattr(app.state, 'installations'):
             app.state.installations = load_testers_data()
