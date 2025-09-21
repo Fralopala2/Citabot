@@ -227,6 +227,206 @@ class SitValScraper:
             print(f"⚠️ Error getting startUp data for store {store_id}: {e}")
             return {}
 
+    def get_service_month_data(self, store: str, service: str, instance_code: str, 
+                              date: str = None) -> Dict[str, Any]:
+        """Gets monthly availability for a station and service"""
+        if date is None:
+            import datetime
+            date = datetime.date.today().strftime('%Y-%m-%d')
+        
+        print(f"🗓️ Getting month data for store {store}, service {service}, date {date}")
+        
+        data = {
+            "store": str(store),
+            "itineraryPlace": "0",
+            "instanceCode": instance_code,
+            "firstCall": "true",
+            "date": date,
+            "service": str(service)
+        }
+        
+        try:
+            response = self._make_ajax_request(
+                self.AJAX_URL + "?module=serviceMonthData",
+                data
+            )
+            
+            print(f"✅ Month data received for store {store}")
+            return response
+            
+        except Exception as e:
+            print(f"⚠️ Error getting month data for store {store}: {e}")
+            return {}
+
+    def get_service_day_data(self, store: str, service: str, instance_code: str, 
+                            dia: str) -> Dict[str, Any]:
+        """Gets available time slots for a specific day"""
+        print(f"📅 Getting day data for store {store}, service {service}, date {dia}")
+        
+        data = {
+            "store": str(store),
+            "service": str(service),
+            "instanceCode": instance_code,
+            "date": dia,
+            "itineraryPlace": "0",
+            "dateHour": dia
+        }
+        
+        try:
+            response = self._make_ajax_request(
+                self.AJAX_URL + "?module=serviceDayData",
+                data
+            )
+            
+            print(f"✅ Day data received for store {store}")
+            return response
+            
+        except Exception as e:
+            print(f"⚠️ Error getting day data for store {store}: {e}")
+            return {}
+
+    def get_next_available_slots(self, store: str, service: str, instance_code: str = "", 
+                               max_slots: int = 10) -> List[Dict[str, Any]]:
+        """Gets next available appointments for specific station and service"""
+        print(f"🔍 Searching appointments for store={store}, service={service}")
+        
+        try:
+            slots = []
+            today = datetime.datetime.now().date()
+            
+            # Search range: from today to end of next month
+            current_month_start = today.replace(day=1)
+            next_month_start = (current_month_start + datetime.timedelta(days=32)).replace(day=1)
+            end_of_next_month = (next_month_start + datetime.timedelta(days=32)).replace(day=1) - datetime.timedelta(days=1)
+            
+            print(f"📍 Searching from {today} to {end_of_next_month}")
+            
+            # Search current month and next month
+            search_months = [current_month_start, next_month_start]
+            
+            for month_start in search_months:
+                if len(slots) >= max_slots:
+                    break
+                
+                month_name = month_start.strftime('%B %Y')
+                print(f"📅 Checking {month_name}...")
+                
+                # Get available days for the month
+                month_data = self.get_service_month_data(
+                    store, service, instance_code, month_start.strftime('%Y-%m-%d')
+                )
+                
+                open_days = month_data.get('get_open_days', {})
+                service_price = month_data.get('service_price')
+                
+                # Filter valid days
+                valid_days = self._filter_valid_days(open_days)
+                
+                # Only take dates from today to end of next month
+                filtered_days = []
+                for dia in valid_days:
+                    try:
+                        dia_date = datetime.datetime.strptime(dia, '%Y-%m-%d').date()
+                        if today <= dia_date <= end_of_next_month:
+                            filtered_days.append(dia)
+                    except:
+                        continue
+                
+                # Sort dates chronologically
+                filtered_days.sort()
+                
+                print(f"   📋 Available days in {month_name}: {len(filtered_days)}")
+                
+                for dia in filtered_days:
+                    if len(slots) >= max_slots:
+                        break
+                    
+                    # Get time slots for the day
+                    day_data = self.get_service_day_data(store, service, instance_code, dia)
+                    day_slots = day_data.get('get_day_slots', {})
+                    
+                    # Extract valid hours
+                    valid_hours = self._extract_valid_hours(day_slots)
+                    
+                    if valid_hours:
+                        print(f"   ✅ {dia}: {len(valid_hours)} time slots available")
+                        
+                        for hora in valid_hours:
+                            slots.append({
+                                'fecha': dia,
+                                'hora': hora,
+                                'precio': service_price,
+                                'store': store,
+                                'service': service
+                            })
+                            if len(slots) >= max_slots:
+                                break
+                    else:
+                        print(f"   ❌ {dia}: No available time slots")
+            
+            print(f"🎉 Found {len(slots)} total appointments")
+            return slots
+            
+        except Exception as e:
+            print(f"⚠️ Error searching appointments: {e}")
+            return []
+
+    def _filter_valid_days(self, open_days: Any) -> List[str]:
+        """Filter valid days from availability response"""
+        valid_days = []
+        if isinstance(open_days, dict):
+            # System returns dates as values: {'n0': '2025-09-15', 'n1': '2025-09-16', ...}
+            for key, value in open_days.items():
+                if isinstance(value, str) and len(value) == 10 and '-' in value:
+                    # Validate it's a valid date (YYYY-MM-DD)
+                    try:
+                        year, month, day = value.split('-')
+                        if len(year) == 4 and len(month) == 2 and len(day) == 2:
+                            valid_days.append(value)
+                    except:
+                        continue
+        elif isinstance(open_days, list):
+            valid_days = [v for v in open_days if isinstance(v, str) and not v.startswith('n')]
+        return valid_days
+
+    def _extract_valid_hours(self, day_slots: Any) -> List[str]:
+        """Extract valid hours in HH:MM format from day slots"""
+        valid_hours = []
+        
+        def extract_hour(hora_str):
+            # Extract HH:MM from 'YYYY-MM-DD HH:MM:SS'
+            if isinstance(hora_str, str) and len(hora_str) >= 16:
+                return hora_str[11:16]
+            return None
+        
+        if isinstance(day_slots, dict):
+            for slot_group in day_slots.values():
+                if isinstance(slot_group, dict):
+                    # Nested structure: {"n0": {"n0": "2025-09-15 08:10:00", "n1": "..."}, ...}
+                    for hora_str in slot_group.values():
+                        h = extract_hour(hora_str)
+                        if h:
+                            valid_hours.append(h)
+                elif isinstance(slot_group, list):
+                    # List of time slots
+                    for hora in slot_group:
+                        h = extract_hour(hora)
+                        if h:
+                            valid_hours.append(h)
+                elif isinstance(slot_group, str):
+                    # Direct time slot
+                    h = extract_hour(slot_group)
+                    if h:
+                        valid_hours.append(h)
+        elif isinstance(day_slots, list):
+            for hora in day_slots:
+                h = extract_hour(hora)
+                if h:
+                    valid_hours.append(h)
+        
+        # Remove duplicates and sort
+        return sorted(list(set(valid_hours)))
+
     def extract_stations(self, group_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Extract stations information from groupStartup JSON response"""
         print(f"🏢 Extracting stations from groupStartup data...")
