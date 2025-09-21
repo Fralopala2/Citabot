@@ -99,6 +99,10 @@ start_*.bat
 **/*backup*
 **/*temp*
 
+# Persistent data files (contain user data)
+testers_data.json
+**/testers_data.json
+
 # Test files (no subir tests al repo)
 test_*.py
 *_test.py

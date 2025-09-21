@@ -11,6 +11,34 @@ from scraper_sitval import SitValScraper
 # Server startup time for health checks
 startup_time = time.time()
 
+# File for persistent storage of testers data
+TESTERS_DATA_FILE = "testers_data.json"
+
+def load_testers_data():
+    """Load testers data from persistent storage"""
+    try:
+        if os.path.exists(TESTERS_DATA_FILE):
+            with open(TESTERS_DATA_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                print(f"📂 Loaded {len(data)} testers from persistent storage")
+                return data
+    except Exception as e:
+        print(f"❌ Error loading testers data: {e}")
+    
+    print("📂 No existing testers data found, starting fresh")
+    return {}
+
+def save_testers_data(installations_dict):
+    """Save testers data to persistent storage"""
+    try:
+        with open(TESTERS_DATA_FILE, 'w', encoding='utf-8') as f:
+            json.dump(installations_dict, f, ensure_ascii=False, indent=2)
+        print(f"💾 Saved {len(installations_dict)} testers to persistent storage")
+        return True
+    except Exception as e:
+        print(f"❌ Error saving testers data: {e}")
+        return False
+
 scraper = SitValScraper()
 app = FastAPI(
     title="Citabot API",
@@ -41,6 +69,16 @@ app.add_middleware(
     allow_methods=["GET", "POST"],  # Solo métodos necesarios
     allow_headers=["Content-Type", "Authorization"],  # Solo headers necesarios
 )
+
+# Initialize persistent testers data on startup
+@app.on_event("startup")
+async def startup_event():
+    """Initialize server with persistent data"""
+    # Load testers data from file
+    if not hasattr(app.state, 'installations'):
+        app.state.installations = load_testers_data()
+    
+    print("🚀 Citabot server started with persistent testers data")
 
 # In-memory cache for available slots
 slots_cache = {}
@@ -335,11 +373,14 @@ async def track_installation(request: Request):
             "last_seen": timestamp
         }
         
-        # Add to installations tracking (in-memory for now, could be database later)
+        # Add to installations tracking with persistent storage
         if not hasattr(app.state, 'installations'):
-            app.state.installations = {}
+            app.state.installations = load_testers_data()
         
         app.state.installations[user_id] = installation_data
+        
+        # Save to persistent storage
+        save_testers_data(app.state.installations)
         
         print(f"📱 Installation tracked: User {user_id} on {platform} v{app_version}")
         
@@ -368,6 +409,10 @@ async def track_usage(request: Request):
         # Update last seen timestamp
         if hasattr(app.state, 'installations') and user_id in app.state.installations:
             app.state.installations[user_id]["last_seen"] = timestamp
+            
+            # Save to persistent storage
+            save_testers_data(app.state.installations)
+            
             print(f"📊 Usage tracked: User {user_id}")
             
             return {
@@ -386,7 +431,7 @@ def get_testers_status():
     """Get installation status of all testers (admin endpoint)"""
     try:
         if not hasattr(app.state, 'installations'):
-            app.state.installations = {}
+            app.state.installations = load_testers_data()
         
         testers = []
         for user_id, data in app.state.installations.items():
@@ -419,7 +464,7 @@ def get_testers_dashboard():
     """HTML dashboard for testers tracking"""
     try:
         if not hasattr(app.state, 'installations'):
-            app.state.installations = {}
+            app.state.installations = load_testers_data()
         
         testers = []
         for user_id, data in app.state.installations.items():
