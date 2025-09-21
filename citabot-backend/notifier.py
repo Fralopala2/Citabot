@@ -1,12 +1,9 @@
 import os
 import json
-# Removed typing imports for compatibility
 
 # Firebase es opcional - solo se inicializa si el archivo de credenciales existe
 firebase_app = None
 messaging = None
-
-
 
 # Almacén robusto de tokens: token -> {"user_id": ..., "favoritos": [...]}
 TOKENS_DATA_FILE = "tokens_data.json"
@@ -35,18 +32,14 @@ def save_tokens_data():
         print(f"❌ Error saving tokens data: {e}")
         return False
 
-# Carga tokens al iniciar
+# Cargar tokens al iniciar
 load_tokens_data()
 
 try:
-    # Try to initialize Firebase using FIREBASE_CONFIG environment variable (JSON string)
     firebase_config_json = os.getenv("FIREBASE_CONFIG")
-    
     if firebase_config_json:
         import firebase_admin
         from firebase_admin import credentials, messaging as fb_messaging
-        
-        # Parse JSON from environment variable
         firebase_config = json.loads(firebase_config_json)
         cred = credentials.Certificate(firebase_config)
         firebase_app = firebase_admin.initialize_app(cred)
@@ -55,8 +48,6 @@ try:
     elif os.path.exists("firebase-service-account.json"):
         import firebase_admin
         from firebase_admin import credentials, messaging as fb_messaging
-        
-        # Fallback: usar archivo JSON local
         cred = credentials.Certificate("firebase-service-account.json")
         firebase_app = firebase_admin.initialize_app(cred)
         messaging = fb_messaging
@@ -65,7 +56,6 @@ try:
         print("Firebase service account not found - notifications disabled")
 except Exception as e:
     print(f"Firebase initialization failed: {e}")
-
 
 def register_device_token(token, user_id=None, favoritos=None):
     """
@@ -84,7 +74,7 @@ def register_device_token(token, user_id=None, favoritos=None):
         return True
     return False
 
-
+def send_notification_to_all(title, message, data=None):
     """
     Envía notificación push a todos los dispositivos registrados (legacy, no filtra).
     Usar solo para pruebas o casos especiales.
@@ -117,6 +107,7 @@ def register_device_token(token, user_id=None, favoritos=None):
     save_tokens_data()
     print(f"Notifications sent: {successful_sends}/{len(registered_tokens) + len(failed_tokens)}")
 
+def send_notification_to_favorites(title, message, data, estacion):
     """
     Envía notificación solo a usuarios con la estación en favoritos.
     Solo los tokens cuyo array de favoritos contiene la estación recibirán la notificación.
@@ -151,14 +142,14 @@ def register_device_token(token, user_id=None, favoritos=None):
     save_tokens_data()
     print(f"Notifications sent to favorites: {successful_sends}")
 
-
+def send_new_appointment_notification(estacion, fecha, hora, specific_token=None):
     """
     Envía notificación específica para nueva cita disponible.
     Si specific_token está presente, solo se envía a ese token.
     Si no, se filtra por favoritos usando send_notification_to_favorites.
     """
     title = "🎉 Nueva cita disponible!"
-    message = f"{estacion}\n📅 {fecha} a las {hora}"
+    message = f"{estacion}\\n📅 {fecha} a las {hora}"
     data = {
         "type": "new_appointment",
         "estacion": estacion,
@@ -175,9 +166,7 @@ def send_notification_to_token(title, message, data, token):
     if not messaging or not firebase_app:
         print(f"Test notification would be sent to {token[:20]}...: {title} - {message}")
         return True
-    
     try:
-        # Crear el mensaje
         notification_msg = messaging.Message(
             notification=messaging.Notification(
                 title=title,
@@ -186,20 +175,18 @@ def send_notification_to_token(title, message, data, token):
             data=data or {},
             token=token
         )
-        
         response = messaging.send(notification_msg)
         print(f"Test notification sent successfully to {token[:20]}...: {response}")
         return True
-        
     except Exception as e:
         print(f"Error sending test notification to {token[:20]}...: {e}")
         return False
 
-
+def get_registered_tokens_count():
     """Retorna el número de tokens registrados (únicos)"""
     return len(registered_tokens)
 
-
+def unregister_device_token(token):
     """Desregistra un token específico y lo elimina del almacenamiento persistente"""
     if token in registered_tokens:
         registered_tokens.pop(token)
@@ -210,7 +197,7 @@ def send_notification_to_token(title, message, data, token):
         print(f"Token not found for unregistration: {token[:20]}...")
         return False
 
-
+def clear_all_tokens():
     """Borra todos los tokens registrados y limpia el almacenamiento persistente"""
     count = len(registered_tokens)
     registered_tokens.clear()
@@ -218,7 +205,7 @@ def send_notification_to_token(title, message, data, token):
     print(f"Cleared {count} registered tokens")
     return count
 
-
+def get_all_tokens():
     """Retorna una lista de todos los tokens registrados (para debugging)"""
     return list(registered_tokens.keys())
 
