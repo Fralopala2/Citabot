@@ -116,26 +116,29 @@ class _MyHomePageState extends State<MyHomePage> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final serverReady = data['server_ready'] ?? false;
+        final stationsAvailable = data['stations_available'] ?? false;
         
         if (mounted) {
           setState(() {
             servidorInicializando = !serverReady;
-            if (servidorInicializando) {
-              mensajeCarga = "El servidor se está inicializando...\nEsto puede tardar hasta 1 minuto.";
+            if (!serverReady) {
+              mensajeCarga = "El servidor se está inicializando...\nEsto puede tardar hasta 2 minutos.";
+            } else if (!stationsAvailable) {
+              mensajeCarga = "Servidor listo, cargando estaciones...";
             } else {
               mensajeCarga = "Cargando estaciones...";
             }
           });
         }
         
-        return serverReady;
+        return serverReady && stationsAvailable;
       }
     } catch (e) {
       // Si no podemos verificar el estado, asumimos que está inicializando
       if (mounted) {
         setState(() {
           servidorInicializando = true;
-          mensajeCarga = "Conectando con el servidor...\nEsto puede tardar hasta 1 minuto.";
+          mensajeCarga = "Conectando con el servidor...\nEsto puede tardar hasta 2 minutos.";
         });
       }
     }
