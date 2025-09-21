@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import '../config.dart';
@@ -20,8 +21,16 @@ class InstallationTracker {
         debugPrint('Failed to get user ID, cannot track installation');
         return;
       }
+      // Get real app version
+      String appVersion = 'unknown';
+      try {
+        final info = await PackageInfo.fromPlatform();
+        appVersion = info.version;
+      } catch (e) {
+        debugPrint('Could not get app version: $e');
+      }
       // Track installation
-      final success = await _sendInstallationData(userId);
+      final success = await _sendInstallationData(userId, appVersion: appVersion);
       if (success) {
         await prefs.setString(_userIdKey, userId);
         debugPrint('✅ Installation tracked successfully for user: $userId');
@@ -122,7 +131,7 @@ class InstallationTracker {
   }
 
   /// Sends installation data to backend
-  static Future<bool> _sendInstallationData(String userId) async {
+  static Future<bool> _sendInstallationData(String userId, {String appVersion = 'unknown'}) async {
     try {
       final url = Uri.parse(Config.trackInstallationUrl);
       final response = await http.post(
@@ -134,7 +143,7 @@ class InstallationTracker {
           'user_id': userId,
           'platform': 'android',
           'timestamp': DateTime.now().toIso8601String(),
-          'app_version': '1.0.7', // You can get this from package_info_plus if needed
+          'app_version': appVersion,
           'event_type': 'install',
         }),
       ).timeout(Duration(seconds: 10));

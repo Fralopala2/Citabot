@@ -582,8 +582,9 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
           );
           // Solo buscar servicios equivalentes a la categoría seleccionada
           final serviciosFiltrados = servicios.where((s) {
-            final nombre = (s['nombre'] ?? '').toString().toLowerCase();
-            return palabrasClave.any((kw) => nombre.contains(kw.toLowerCase()));
+            final nombre = (s['nombre'] ?? '').toString().toLowerCase().trim();
+            // Coincidencia exacta (case-insensitive) con alguna palabra clave
+            return palabrasClave.any((kw) => nombre == kw.toLowerCase().trim());
           }).toList();
           debugPrint(
             'Estación $storeId ($nombreEstacion) - Servicios equivalentes: ${serviciosFiltrados.map((s) => s['nombre']).toList()}',
