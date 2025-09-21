@@ -4,6 +4,7 @@ import time
 import os
 from fastapi import FastAPI, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from notifier import register_device_token, send_new_appointment_notification, get_registered_tokens_count, is_firebase_enabled
 from scraper_sitval import SitValScraper
 
@@ -405,12 +406,161 @@ def get_testers_status():
         return {
             "total_testers": len(testers),
             "active_installations": len([t for t in testers if t["days_since_last_seen"] <= 1]),
+            "total_usage_events": sum(1 for t in testers if t.get("last_seen")),
             "testers": testers
         }
         
     except Exception as e:
         print(f"Error getting testers status: {e}")
         return {"error": "Failed to get testers status"}, 500
+
+@app.get("/admin/dashboard")
+def get_testers_dashboard():
+    """HTML dashboard for testers tracking"""
+    try:
+        if not hasattr(app.state, 'installations'):
+            app.state.installations = {}
+        
+        testers = []
+        for user_id, data in app.state.installations.items():
+            testers.append({
+                "user_id": user_id,
+                "platform": data.get("platform", "unknown"),
+                "app_version": data.get("app_version", "unknown"),
+                "install_date": data.get("timestamp"),
+                "last_seen": data.get("last_seen"),
+                "days_since_install": _calculate_days_since(data.get("timestamp")),
+                "days_since_last_seen": _calculate_days_since(data.get("last_seen"))
+            })
+        
+        # Sort by install date (newest first)
+        testers.sort(key=lambda x: x.get("install_date", ""), reverse=True)
+        
+        total_testers = len(testers)
+        active_testers = len([t for t in testers if t["days_since_last_seen"] <= 1])
+        usage_events = sum(1 for t in testers if t.get("last_seen"))
+        
+        # Generate HTML
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Citabot - Panel de Testers</title>
+            <meta charset="UTF-8">
+            <style>
+                body {{ font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }}
+                .container {{ max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+                .header {{ text-align: center; margin-bottom: 30px; }}
+                .stats {{ display: flex; justify-content: space-around; margin-bottom: 30px; }}
+                .stat-card {{ background: #007bff; color: white; padding: 20px; border-radius: 8px; text-align: center; min-width: 150px; }}
+                .stat-number {{ font-size: 2em; font-weight: bold; }}
+                .stat-label {{ font-size: 0.9em; }}
+                .table-container {{ overflow-x: auto; }}
+                table {{ width: 100%; border-collapse: collapse; }}
+                th, td {{ padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }}
+                th {{ background-color: #f8f9fa; font-weight: bold; }}
+                .user-id {{ font-family: monospace; font-size: 0.85em; }}
+                .active {{ color: #28a745; font-weight: bold; }}
+                .inactive {{ color: #dc3545; }}
+                .refresh-btn {{ background: #28a745; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; margin-bottom: 20px; }}
+                .refresh-btn:hover {{ background: #218838; }}
+                .progress {{ background: #e9ecef; height: 20px; border-radius: 10px; margin: 10px 0; }}
+                .progress-bar {{ background: #28a745; height: 100%; border-radius: 10px; text-align: center; line-height: 20px; color: white; font-size: 12px; }}
+            </style>
+            <script>
+                function refreshPage() {{
+                    location.reload();
+                }}
+                setTimeout(refreshPage, 30000); // Auto-refresh every 30 seconds
+            </script>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1>🤖 Citabot - Panel de Testers</h1>
+                    <p>Monitoreo de instalaciones para Google Play</p>
+                    <button class="refresh-btn" onclick="refreshPage()">🔄 Actualizar</button>
+                </div>
+                
+                <div class="stats">
+                    <div class="stat-card">
+                        <div class="stat-number">{total_testers}</div>
+                        <div class="stat-label">Total Testers</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">{active_testers}</div>
+                        <div class="stat-label">Activos (24h)</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">{usage_events}</div>
+                        <div class="stat-label">Eventos de Uso</div>
+                    </div>
+                </div>
+                
+                <div class="progress">
+                    <div class="progress-bar" style="width: {min(total_testers/12*100, 100)}%;">
+                        {total_testers}/12 testers ({min(total_testers/12*100, 100):.0f}%)
+                    </div>
+                </div>
+                
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>User ID</th>
+                                <th>Plataforma</th>
+                                <th>Versión</th>
+                                <th>Fecha Instalación</th>
+                                <th>Último Uso</th>
+                                <th>Días Activo</th>
+                                <th>Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+        """
+        
+        for i, tester in enumerate(testers, 1):
+            user_id_short = tester["user_id"][:20] + "..." if len(tester["user_id"]) > 23 else tester["user_id"]
+            install_date = tester.get("install_date", "").split("T")[0] if tester.get("install_date") else "N/A"
+            last_seen_date = tester.get("last_seen", "").split("T")[0] if tester.get("last_seen") else "N/A"
+            days_since_last = tester.get("days_since_last_seen", 999)
+            status_class = "active" if days_since_last <= 1 else "inactive"
+            status_text = "🟢 Activo" if days_since_last <= 1 else "🔴 Inactivo"
+            
+            html_content += f"""
+                            <tr>
+                                <td>{i}</td>
+                                <td class="user-id">{user_id_short}</td>
+                                <td>{tester.get("platform", "N/A").title()}</td>
+                                <td>{tester.get("app_version", "N/A")}</td>
+                                <td>{install_date}</td>
+                                <td>{last_seen_date}</td>
+                                <td>{tester.get("days_since_install", "N/A")}</td>
+                                <td class="{status_class}">{status_text}</td>
+                            </tr>
+            """
+        
+        html_content += """
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div style="margin-top: 30px; text-align: center; color: #666;">
+                    <p>🎯 <strong>Objetivo:</strong> 12 testers activos durante 14 días para Google Play</p>
+                    <p>📊 <strong>API JSON:</strong> <a href="/admin/testers">Ver datos en formato JSON</a></p>
+                    <p>🔄 Esta página se actualiza automáticamente cada 30 segundos</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+        return HTMLResponse(content=html_content)
+        
+    except Exception as e:
+        print(f"Error generating dashboard: {e}")
+        return {"error": "Failed to generate dashboard"}, 500
 
 def _calculate_days_since(timestamp_str):
     """Calculate days since a timestamp"""
