@@ -38,22 +38,58 @@ class SitValScraper:
             if response.status_code != 200:
                 print(f"⚠️ HTTP {response.status_code} for {url}")
             
-            # Handle Brotli compression quietly (no verbose output)
-            if response.headers.get('Content-Encoding') == 'br':
+            # Check if content is actually compressed
+            content_encoding = response.headers.get('Content-Encoding', '').lower()
+            
+            if content_encoding == 'br':
+                # Check if content is already text (requests auto-decompressed)
                 try:
-                    import brotli
-                    decompressed = brotli.decompress(response.content)
-                    response._content = decompressed
+                    # Try to decode as text first - if it works, it's already decompressed
+                    test_text = response.content.decode('utf-8', errors='replace')
+                    if test_text.strip().startswith(('<!DOCTYPE', '<html', '{')):
+                        # Content is already readable, just remove the misleading header
+                        response.headers.pop('Content-Encoding', None)
+                        print(f"✅ Content already decompressed by requests for {url}")
+                    else:
+                        # Try manual Brotli decompression
+                        import brotli
+                        decompressed = brotli.decompress(response.content)
+                        response._content = decompressed
+                        response.headers.pop('Content-Encoding', None)
+                        print(f"✅ Manual Brotli decompression: {len(decompressed)} bytes for {url}")
                 except ImportError:
-                    pass  # Use response.text directly
-                except Exception:
-                    pass  # Fail silently, use original content
+                    print("⚠️ Brotli library not available - using content as-is")
+                except Exception as e:
+                    # If Brotli fails, assume content is already good
+                    response.headers.pop('Content-Encoding', None)
+                    print(f"ℹ️ Using content as-is for {url} (Brotli header may be incorrect)")
             
             return response
             
         except requests.RequestException as e:
             print(f"❌ Request failed for {url}: {e}")
             raise
+
+    def _make_ajax_request(self, url: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Make AJAX request and return JSON response"""
+        try:
+            response = self._make_request(
+                url,
+                method="POST", 
+                data=data,
+                headers={"X-Requested-With": "XMLHttpRequest"}
+            )
+            
+            # Try to parse as JSON
+            try:
+                return response.json()
+            except json.JSONDecodeError:
+                print(f"⚠️ Response is not valid JSON, returning raw text")
+                return {"raw_response": response.text}
+                
+        except Exception as e:
+            print(f"❌ AJAX request failed: {e}")
+            return {}
 
     def search_appointments(self, province_id: str = "2", service_id: str = "1", 
                           office_id: str = "1", year: str = None, month: str = None) -> Dict[str, Any]:
@@ -142,64 +178,76 @@ class SitValScraper:
         if not html_content or html_content.strip() == "":
             return []
 
-    def get_group_startup(self, instance_code: str = "", group: str = "1") -> str:
-        """Get group startup data - simplified version for stations list"""
+    def get_group_startup(self, instance_code: str = "", store_id: str = "1") -> Dict[str, Any]:
+        """Gets information about provinces and stations via AJAX call"""
+        print(f"🌐 Making groupStartup AJAX call...")
+        
+        # Make AJAX request for groupStartup
+        data = {
+            "store": str(store_id),
+            "owner": "1", 
+            "instanceCode": instance_code,
+            "group": "4"
+        }
+        
         try:
-            # Get main page first to establish session
-            main_response = self._make_request(self.BASE_URL)
-            
-            # Try to get stations data
-            data = {
-                "module": "startup",
-                "group": group
-            }
-            
-            response = self._make_request(
-                self.AJAX_URL,
-                method="POST",
-                data=data,
-                headers={"X-Requested-With": "XMLHttpRequest"}
+            response = self._make_ajax_request(
+                self.AJAX_URL + "?module=groupStartup",
+                data
             )
             
-            return response.text
+            print(f"✅ GroupStartup response received")
+            return response
             
         except Exception as e:
-            print(f"⚠️ Error getting group startup data: {e}")
-            return ""
+            print(f"⚠️ Error getting groupStartup data: {e}")
+            return {}
 
-    def extract_stations(self, html_content: str) -> List[Dict[str, Any]]:
-        """Extract stations list from HTML content"""
-        stations = []
+    def extract_stations(self, group_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Extract stations information from groupStartup JSON response"""
+        print(f"🏢 Extracting stations from groupStartup data...")
         
-        if not html_content:
-            return stations
+        estaciones = []
+        
+        if not group_data or 'groups' not in group_data:
+            print("⚠️ No 'groups' data found in response")
+            return estaciones
             
         try:
-            soup = BeautifulSoup(html_content, 'html.parser')
+            groups = group_data['groups']
+            print(f"📋 Found {len(groups)} province groups")
             
-            # Look for station options in select elements
-            select_elements = soup.find_all('select')
-            
-            for select in select_elements:
-                options = select.find_all('option')
-                for option in options:
-                    value = option.get('value')
-                    text = option.text.strip()
-                    
-                    if value and text and value != '0':  # Skip default options
-                        # Try to parse the station info
-                        station_info = self._parse_station_info(text, value)
-                        if station_info:
-                            stations.append(station_info)
-            
-            # If no stations found in selects, try alternative methods
-            if not stations:
-                stations = self._extract_stations_fallback(html_content)
+            for prov_key, prov_data in groups.items():
+                provincia = prov_data.get('name', 'Unknown')
+                print(f"   📍 Processing province: {provincia}")
                 
+                level2_data = prov_data.get('level2', {})
+                for type_key, type_data in level2_data.items():
+                    tipo = type_data.get('name', 'ITV')
+                    stores = type_data.get('stores', {})
+                    
+                    print(f"      🏪 Found {len(stores)} stores for type: {tipo}")
+                    
+                    for store_key, store_data in stores.items():
+                        estacion = {
+                            'store_id': store_data.get('store', store_key),
+                            'provincia': provincia,
+                            'nombre': store_data.get('name', ''),
+                            'tipo': tipo,
+                            'direccion': store_data.get('short_description', ''),
+                            'primer_dia': store_data.get('first_availability'),
+                            'instanceCode': store_data.get('instanceCode', '')
+                        }
+                        
+                        estaciones.append(estacion)
+                        print(f"         ✅ Added: {estacion['nombre']} (ID: {estacion['store_id']})")
+            
+            print(f"🎉 Total stations extracted: {len(estaciones)}")
+            return estaciones
+            
         except Exception as e:
             print(f"⚠️ Error extracting stations: {e}")
-            
-        return stations
+            return []
 
     def _parse_station_info(self, text: str, value: str) -> Optional[Dict[str, Any]]:
         """Parse station information from option text"""
@@ -241,33 +289,76 @@ class SitValScraper:
         return None
 
     def _extract_stations_fallback(self, html_content: str) -> List[Dict[str, Any]]:
-        """Fallback method to extract stations using regex"""
+        """Fallback method to extract stations using regex patterns"""
         stations = []
         
-        try:
-            # Look for common patterns in HTML
-            patterns = [
-                r'value="(\d+)"[^>]*>([^<]+)</option>',
-                r'data-id="(\d+)"[^>]*>([^<]+)',
-                r'"id":"(\d+)"[^}]*"name":"([^"]+)"'
-            ]
+        print("🔍 Using fallback regex patterns to find stations...")
+        
+        # Pattern 1: ITV station names with common prefixes
+        itv_patterns = [
+            r'ITV\s+([A-Za-zÀ-ÿ\s\-\.]+)',
+            r'ESTACIÓN\s+ITV\s+([A-Za-zÀ-ÿ\s\-\.]+)',
+            r'CENTRO\s+ITV\s+([A-Za-zÀ-ÿ\s\-\.]+)',
+            r'>([A-Za-zÀ-ÿ\s\-\.]+\s+ITV)<',
+            r'"([A-Za-zÀ-ÿ\s\-\.]+\s+ITV)"'
+        ]
+        
+        for i, pattern in enumerate(itv_patterns):
+            matches = re.findall(pattern, html_content, re.IGNORECASE)
+            print(f"   Pattern {i+1}: Found {len(matches)} matches")
             
-            for pattern in patterns:
-                matches = re.findall(pattern, html_content)
-                for match in matches:
-                    if len(match) == 2:
-                        store_id, name = match
-                        if store_id and name.strip() and store_id != '0':
-                            stations.append({
-                                "store_id": store_id,
-                                "provincia": "Unknown",
-                                "nombre": name.strip(),
-                                "tipo": "ITV"
-                            })
-                            
-        except Exception as e:
-            print(f"⚠️ Error in fallback station extraction: {e}")
+            for j, match in enumerate(matches[:10]):  # Limit to first 10 for debugging
+                if len(match.strip()) > 3:  # Avoid very short matches
+                    station_id = f"fallback_{i}_{j}"
+                    stations.append({
+                        "store_id": station_id,
+                        "provincia": "Regex",
+                        "nombre": match.strip(),
+                        "tipo": "ITV"
+                    })
+        
+        # Pattern 2: Look for data attributes or JSON-like structures
+        data_patterns = [
+            r'data-station[^=]*=\s*["\']([^"\']+)["\']',
+            r'data-store[^=]*=\s*["\']([^"\']+)["\']',
+            r'"station[^"]*"\s*:\s*"([^"]+)"',
+            r'"store[^"]*"\s*:\s*"([^"]+)"'
+        ]
+        
+        for i, pattern in enumerate(data_patterns):
+            matches = re.findall(pattern, html_content)
+            print(f"   Data pattern {i+1}: Found {len(matches)} matches")
             
+            for j, match in enumerate(matches[:5]):
+                stations.append({
+                    "store_id": f"data_{i}_{j}",
+                    "provincia": "DataAttr",
+                    "nombre": match.strip(),
+                    "tipo": "ITV"
+                })
+        
+        # Pattern 3: Look for city/location names that might be ITV stations
+        location_patterns = [
+            r'value\s*=\s*["\'](\d+)["\'][^>]*>([A-Za-zÀ-ÿ\s\-\.]{5,40})<',
+            r'<option[^>]+value\s*=\s*["\']([^"\']+)["\'][^>]*>([^<]{5,40})</option>'
+        ]
+        
+        for i, pattern in enumerate(location_patterns):
+            matches = re.findall(pattern, html_content)
+            print(f"   Location pattern {i+1}: Found {len(matches)} matches")
+            
+            for match in matches[:10]:
+                if len(match) == 2:
+                    value, text = match
+                    if value and text.strip() and value not in ['0', '', 'null']:
+                        stations.append({
+                            "store_id": value,
+                            "provincia": "Location",
+                            "nombre": text.strip(),
+                            "tipo": "ITV"
+                        })
+        
+        print(f"🔄 Fallback extraction found {len(stations)} total matches")
         return stations
         
         appointments = []
