@@ -15,15 +15,28 @@ startup_time = time.time()
 TESTERS_DATA_FILE = "testers_data.json"
 
 def load_testers_data():
-    """Load testers data from persistent storage"""
+    """Load testers data from persistent storage with environment backup"""
+    # Try to load from local file first
     try:
         if os.path.exists(TESTERS_DATA_FILE):
             with open(TESTERS_DATA_FILE, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                print(f"📂 Loaded {len(data)} testers from persistent storage")
+                print(f"📂 Loaded {len(data.get('testers', []))} testers from local file")
                 return data
     except Exception as e:
-        print(f"❌ Error loading testers data: {e}")
+        print(f"❌ Error loading testers from file: {e}")
+    
+    # If no file, try to load from environment variable backup
+    try:
+        testers_backup = os.getenv("TESTERS_BACKUP")
+        if testers_backup:
+            data = json.loads(testers_backup)
+            print(f"🔄 Loaded {len(data.get('testers', []))} testers from environment backup")
+            # Save immediately to local file
+            save_testers_data(data)
+            return data
+    except Exception as e:
+        print(f"❌ Error loading testers from environment: {e}")
     
     print("📂 No existing testers data found, starting fresh")
     return {
@@ -32,11 +45,22 @@ def load_testers_data():
     }
 
 def save_testers_data(installations_dict):
-    """Save tester data to persistent storage"""
+    """Save tester data to persistent storage and environment backup"""
     try:
+        # Save to local file
         with open(TESTERS_DATA_FILE, 'w', encoding='utf-8') as f:
             json.dump(installations_dict, f, ensure_ascii=False, indent=2)
-        print(f"💾 Saved {len(installations_dict)} testers to persistent storage")
+        
+        # In production, we could also save to environment variable as backup
+        # This would require updating the environment variable in Render dashboard
+        # For now, we'll just log the data that should be backed up
+        testers_count = len(installations_dict.get('testers', []))
+        print(f"💾 Saved {testers_count} testers to local storage")
+        
+        # Log backup data for manual recovery if needed
+        if testers_count > 0:
+            print(f"🔄 Backup data (for TESTERS_BACKUP env var): {json.dumps(installations_dict, separators=(',', ':'))}")
+        
         return True
     except Exception as e:
         print(f"❌ Error saving testers data: {e}")
@@ -706,6 +730,35 @@ async def admin_clear_dashboard():
     cleared_data = clear_dashboard()
     app.state.installations = cleared_data
     return {"message": "Dashboard limpiado correctamente", "data": cleared_data}
+
+@app.get("/admin/backup-data")
+async def get_backup_data():
+    """Get backup data for manual environment variable setup"""
+    try:
+        if not hasattr(app.state, 'installations'):
+            app.state.installations = load_testers_data()
+        
+        from notifier import registered_tokens
+        
+        backup_data = {
+            "testers_backup": json.dumps(app.state.installations, separators=(',', ':')),
+            "tokens_backup": json.dumps(registered_tokens, separators=(',', ':')),
+            "testers_count": len(app.state.installations.get('testers', [])),
+            "tokens_count": len(registered_tokens)
+        }
+        
+        return {
+            "message": "Backup data ready - copy these to environment variables",
+            "instructions": {
+                "TESTERS_BACKUP": "Copy testers_backup value to TESTERS_BACKUP env var in Render",
+                "TOKENS_BACKUP": "Copy tokens_backup value to TOKENS_BACKUP env var in Render"
+            },
+            "data": backup_data
+        }
+        
+    except Exception as e:
+        print(f"Error getting backup data: {e}")
+        return {"error": "Failed to get backup data"}, 500
 
 # Endpoint to get all real stations
 @app.get("/itv/estaciones")
