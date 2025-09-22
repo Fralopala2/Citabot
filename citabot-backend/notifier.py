@@ -10,23 +10,47 @@ TOKENS_DATA_FILE = "tokens_data.json"
 registered_tokens = {}  # token -> {"user_id":..., "favoritos": [...]}
 
 def load_tokens_data():
+    """
+    Carga tokens desde archivo local y desde variable de entorno como backup.
+    En Render Free Tier, el archivo se pierde al reiniciar, pero podemos usar env vars.
+    """
     global registered_tokens
+    
+    # Intentar cargar desde archivo local primero
     try:
         if os.path.exists(TOKENS_DATA_FILE):
             with open(TOKENS_DATA_FILE, 'r', encoding='utf-8') as f:
                 registered_tokens = json.load(f)
-                print(f"📂 Loaded {len(registered_tokens)} tokens from persistent storage")
-        else:
-            registered_tokens = {}
+                print(f"📂 Loaded {len(registered_tokens)} tokens from local file")
+                return
     except Exception as e:
-        print(f"❌ Error loading tokens data: {e}")
-        registered_tokens = {}
+        print(f"❌ Error loading tokens from file: {e}")
+    
+    # Si no hay archivo, intentar cargar desde variable de entorno
+    try:
+        tokens_backup = os.getenv("TOKENS_BACKUP")
+        if tokens_backup:
+            registered_tokens = json.loads(tokens_backup)
+            print(f"🔄 Loaded {len(registered_tokens)} tokens from environment backup")
+            # Guardar inmediatamente en archivo local
+            save_tokens_data()
+            return
+    except Exception as e:
+        print(f"❌ Error loading tokens from environment: {e}")
+    
+    # Si nada funciona, empezar con diccionario vacío
+    registered_tokens = {}
+    print("🆕 Starting with empty tokens registry")
 
 def save_tokens_data():
+    """
+    Guarda tokens en archivo local.
+    En producción, también podríamos guardar en variable de entorno como backup.
+    """
     try:
         with open(TOKENS_DATA_FILE, 'w', encoding='utf-8') as f:
             json.dump(registered_tokens, f, ensure_ascii=False, indent=2)
-        print(f"💾 Saved {len(registered_tokens)} tokens to persistent storage")
+        print(f"💾 Saved {len(registered_tokens)} tokens to local storage")
         return True
     except Exception as e:
         print(f"❌ Error saving tokens data: {e}")
@@ -71,6 +95,17 @@ def register_device_token(token, user_id=None, favoritos=None):
             registered_tokens[token]["favoritos"] = favoritos
         save_tokens_data()
         print(f"Device token registered: {token[:20]}... user_id={user_id} favoritos={favoritos}")
+        return True
+    return False
+
+def update_user_favorites(token, favoritos):
+    """
+    Actualiza solo los favoritos de un token específico.
+    """
+    if token in registered_tokens:
+        registered_tokens[token]["favoritos"] = favoritos
+        save_tokens_data()
+        print(f"Updated favorites for token {token[:20]}...: {favoritos}")
         return True
     return False
 
@@ -142,24 +177,29 @@ def send_notification_to_favorites(title, message, data, estacion):
     save_tokens_data()
     print(f"Notifications sent to favorites: {successful_sends}")
 
-def send_new_appointment_notification(estacion, fecha, hora, specific_token=None):
+def send_new_appointment_notification(estacion_nombre, fecha, hora, specific_token=None, store_id=None):
     """
     Envía notificación específica para nueva cita disponible.
     Si specific_token está presente, solo se envía a ese token.
-    Si no, se filtra por favoritos usando send_notification_to_favorites.
+    Si no, se filtra por favoritos usando send_notification_to_favorites con store_id.
     """
     title = "🎉 Nueva cita disponible!"
-    message = f"{estacion}\\n📅 {fecha} a las {hora}"
+    message = f"{estacion_nombre}\n📅 {fecha} a las {hora}"
     data = {
         "type": "new_appointment",
-        "estacion": estacion,
+        "estacion": estacion_nombre,
         "fecha": fecha,
-        "hora": hora
+        "hora": hora,
+        "store_id": str(store_id) if store_id else None
     }
+    
     if specific_token:
         send_notification_to_token(title, message, data, specific_token)
+    elif store_id:
+        # Usar el ID numérico de la estación para filtrar favoritos
+        send_notification_to_favorites(title, message, data, store_id)
     else:
-        send_notification_to_favorites(title, message, data, estacion)
+        print(f"⚠️ No store_id provided for notification: {estacion_nombre}")
 
 def send_notification_to_token(title, message, data, token):
     """Envía notificación push a un token específico"""

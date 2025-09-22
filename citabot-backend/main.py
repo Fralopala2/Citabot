@@ -5,7 +5,7 @@ import os
 from fastapi import FastAPI, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
-from notifier import register_device_token, send_new_appointment_notification, get_registered_tokens_count, is_firebase_enabled
+from notifier import register_device_token, send_new_appointment_notification, get_registered_tokens_count, is_firebase_enabled, update_user_favorites
 from scraper_sitval import SitValScraper
 
 # Server startup time for health checks
@@ -195,7 +195,8 @@ def detect_new_appointments(old_data, new_data, store, service):
             if appointment_id not in old_appointments:
                 # This is a new appointment
                 new_appointments.append({
-                    'estacion': f"Estación {store} - Servicio {service}",
+                    'store_id': int(store),  # ID numérico de la estación
+                    'estacion_nombre': f"Estación {store} - Servicio {service}",
                     'fecha': item['fecha'],
                     'hora': item['hora']
                 })
@@ -220,9 +221,10 @@ def set_cached_slots(store, service, data):
         if new_appointments:
             for appointment in new_appointments:
                 send_new_appointment_notification(
-                    appointment['estacion'],
+                    appointment['estacion_nombre'],
                     appointment['fecha'], 
-                    appointment['hora']
+                    appointment['hora'],
+                    store_id=appointment['store_id']
                 )
 
 # Background thread to refresh cache periodically
@@ -323,6 +325,43 @@ async def register_token_endpoint(request: Request):
     except Exception as e:
         print(f"Error registering token: {e}")
         return {"error": "Failed to register token"}, 500
+
+# Endpoint para actualizar favoritos de un token
+@app.post("/update-favorites")
+async def update_favorites_endpoint(request: Request):
+    """Actualiza la lista de favoritos para un token específico"""
+    try:
+        data = await request.json()
+        token = data.get("token")
+        favoritos = data.get("favoritos", [])
+        
+        if not token:
+            return {"error": "Token is required"}, 400
+        
+        # Validar favoritos como lista de enteros
+        if not isinstance(favoritos, list):
+            return {"error": "Favoritos debe ser una lista"}, 400
+        
+        # Convertir a enteros si vienen como strings
+        try:
+            favoritos = [int(f) for f in favoritos]
+        except (ValueError, TypeError):
+            return {"error": "Favoritos debe contener solo números de estación"}, 400
+        
+        success = register_device_token(token, favoritos=favoritos)
+        if success:
+            return {
+                "status": "success", 
+                "message": "Favorites updated successfully",
+                "favoritos_count": len(favoritos),
+                "favoritos": favoritos
+            }
+        else:
+            return {"error": "Token not found"}, 404
+            
+    except Exception as e:
+        print(f"Error updating favorites: {e}")
+        return {"error": "Failed to update favorites"}, 500
 
 @app.delete("/unregister-token")
 async def unregister_token_endpoint(request: Request):
@@ -711,6 +750,34 @@ async def get_fechas(request: Request, store: str, service: str, n: int = 3, for
     except Exception as e:
         print(f"Error getting appointments: {e}")
         return {"fechas_horas": []}
+
+# Endpoint para actualizar favoritos de un usuario
+@app.post("/update-favorites")
+async def update_favorites_endpoint(request: Request):
+    """Actualiza los favoritos de un usuario específico"""
+    try:
+        data = await request.json()
+        token = data.get("token")
+        favoritos = data.get("favoritos")
+        
+        if not token:
+            return {"error": "Token is required"}, 400
+            
+        if favoritos is not None and not isinstance(favoritos, list):
+            return {"error": "Favoritos debe ser una lista"}, 400
+        
+        success = update_user_favorites(token, favoritos)
+        if success:
+            return {
+                "status": "success", 
+                "message": "Favorites updated successfully"
+            }
+        else:
+            return {"error": "Token not found"}, 404
+            
+    except Exception as e:
+        print(f"Error updating favorites: {e}")
+        return {"error": "Failed to update favorites"}, 500
 
 # Endpoint para estadísticas de notificaciones
 @app.get("/notifications/stats")
