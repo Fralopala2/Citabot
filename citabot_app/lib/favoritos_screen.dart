@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'services/notification_service.dart';
+import 'services/user_service.dart';
 
 class FavoritosScreen extends StatefulWidget {
   final List<dynamic> estaciones;
@@ -32,7 +32,7 @@ class _FavoritosScreenState extends State<FavoritosScreen> {
     await prefs.setStringList('favoritos', favoritos.toList());
 
     // También actualizar en el backend para notificaciones
-    await NotificationService.updateFavorites(favoritos.toList());
+    await UserService.updateFavorites(favoritos.toList());
   }
 
   void _toggleFavorito(String id) {

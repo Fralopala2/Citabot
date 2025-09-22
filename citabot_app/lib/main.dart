@@ -11,17 +11,13 @@ import 'favoritos_screen.dart';
 import 'categorias_servicio.dart';
 // ignore: unused_import
 import 'seleccionar_servicio_screen.dart';
-import 'services/notification_service.dart';
-import 'services/installation_tracker.dart';
+import 'services/user_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
-  // Inicializar servicio de notificaciones
-  await NotificationService.initialize();
-  // Track app installation y uso para Google Play testing (siempre)
-  await InstallationTracker.trackInstallationAlways();
-  await InstallationTracker.trackAppUsageIfNeeded();
+  // Inicializar servicio unificado de usuario (notificaciones + tracking)
+  await UserService.initialize();
   // Inicializa AdMob
   await MobileAds.instance.initialize();
   runApp(const MyApp());
@@ -94,9 +90,7 @@ class _MyHomePageState extends State<MyHomePage> {
     )..load();
     // Inicializar FCM token
     _getTokenAndSend();
-  // Track app installation y uso para Google Play testing (siempre)
-  InstallationTracker.trackInstallationAlways();
-  InstallationTracker.trackAppUsageIfNeeded();
+    // El tracking ya se hace automáticamente en UserService.initialize()
     // Get user ID for display
     _getUserId();
   }
@@ -121,17 +115,18 @@ class _MyHomePageState extends State<MyHomePage> {
       final baseUrl = Config.estacionesUrl.replaceAll('/itv/estaciones', '');
       final healthUrl = Uri.parse('$baseUrl/health');
       final response = await http.get(healthUrl).timeout(Duration(seconds: 10));
-      
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final serverReady = data['server_ready'] ?? false;
         final stationsAvailable = data['stations_available'] ?? false;
-        
+
         if (mounted) {
           setState(() {
             servidorInicializando = !serverReady;
             if (!serverReady) {
-              mensajeCarga = "El servidor se está inicializando...\nEsto puede tardar hasta 2 minutos.";
+              mensajeCarga =
+                  "El servidor se está inicializando...\nEsto puede tardar hasta 2 minutos.";
             } else if (!stationsAvailable) {
               mensajeCarga = "Servidor listo, cargando estaciones...";
             } else {
@@ -139,7 +134,7 @@ class _MyHomePageState extends State<MyHomePage> {
             }
           });
         }
-        
+
         return serverReady && stationsAvailable;
       }
     } catch (e) {
@@ -147,7 +142,8 @@ class _MyHomePageState extends State<MyHomePage> {
       if (mounted) {
         setState(() {
           servidorInicializando = true;
-          mensajeCarga = "Conectando con el servidor...\nEsto puede tardar hasta 2 minutos.";
+          mensajeCarga =
+              "Conectando con el servidor...\nEsto puede tardar hasta 2 minutos.";
         });
       }
     }
@@ -159,32 +155,32 @@ class _MyHomePageState extends State<MyHomePage> {
       cargandoEstaciones = true;
       mensajeCarga = "Conectando...";
     });
-    
+
     // Verificar estado del servidor
     final serverReady = await _checkServerStatus();
-    
+
     if (!serverReady) {
       // Si el servidor no está listo, intentar cada 5 segundos hasta que esté listo
       await _waitForServerReady();
     }
-    
+
     final url = Uri.parse(Config.estacionesUrl);
     try {
       setState(() {
         mensajeCarga = "Cargando estaciones...";
         servidorInicializando = false;
       });
-      
+
       final response = await http.get(url).timeout(Duration(seconds: 15));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         estaciones = data['estaciones'];
-        
+
         // Mostrar mensaje de éxito brevemente
         setState(() {
           mensajeCarga = "¡Estaciones cargadas correctamente!";
         });
-        
+
         // Esperar un momento para mostrar el mensaje de éxito
         await Future.delayed(Duration(milliseconds: 1000));
       } else {
@@ -195,13 +191,13 @@ class _MyHomePageState extends State<MyHomePage> {
       setState(() {
         mensajeCarga = "Error al cargar estaciones. Reintentando...";
       });
-      
+
       // Reintentar después de 3 segundos
       Future.delayed(Duration(seconds: 3), () {
         if (mounted) cargarEstaciones();
       });
     }
-    
+
     setState(() {
       cargandoEstaciones = false;
     });
@@ -210,10 +206,10 @@ class _MyHomePageState extends State<MyHomePage> {
   Future<void> _waitForServerReady() async {
     int maxRetries = 24; // 24 * 5 segundos = 2 minutos máximo
     int retries = 0;
-    
+
     while (retries < maxRetries) {
       await Future.delayed(Duration(seconds: 5));
-      
+
       final serverReady = await _checkServerStatus();
       if (serverReady) {
         setState(() {
@@ -222,17 +218,19 @@ class _MyHomePageState extends State<MyHomePage> {
         });
         return;
       }
-      
+
       retries++;
       setState(() {
-        mensajeCarga = "El servidor se está inicializando...\nReintentando en 5 segundos... ($retries/$maxRetries)";
+        mensajeCarga =
+            "El servidor se está inicializando...\nReintentando en 5 segundos... ($retries/$maxRetries)";
       });
     }
-    
+
     // Si llegamos aquí, el servidor tardó demasiado
     setState(() {
       servidorInicializando = false;
-      mensajeCarga = "El servidor está tardando más de lo esperado. Reintentando...";
+      mensajeCarga =
+          "El servidor está tardando más de lo esperado. Reintentando...";
     });
   }
 
@@ -266,15 +264,15 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<void> buscarFechas() async {
     if (estacionSeleccionada == null || tipoSeleccionado == null) return;
-    
+
     final storeId = estacionSeleccionada['store_id'];
     final serviceId = tipoSeleccionado['service'];
     final url = Uri.parse(
       '${Config.fechasUrl}?store=$storeId&service=$serviceId&n=10',
     );
-    
+
     String mensaje = 'No hay fechas disponibles.';
-    
+
     try {
       final response = await http.get(
         url,
@@ -284,12 +282,12 @@ class _MyHomePageState extends State<MyHomePage> {
           'Expires': '0',
         },
       );
-      
+
       if (response.statusCode == 200 && response.body.isNotEmpty) {
         final data = jsonDecode(response.body);
         // FIX: Use 'fechas_horas' not 'fechas' to match backend response
         final fechas = data['fechas_horas'] as List<dynamic>?;
-        
+
         if (fechas != null && fechas.isNotEmpty) {
           // Group by date and show formatted
           final Map<String, List<String>> fechasPorDia = {};
@@ -301,7 +299,7 @@ class _MyHomePageState extends State<MyHomePage> {
               fechasPorDia[fecha]!.add(hora);
             }
           }
-          
+
           if (fechasPorDia.isNotEmpty) {
             final buffer = StringBuffer();
             fechasPorDia.forEach((fecha, horas) {
@@ -318,7 +316,7 @@ class _MyHomePageState extends State<MyHomePage> {
     } catch (e) {
       mensaje = 'Error de conexión: $e';
     }
-    
+
     if (!mounted) return;
     showDialog(
       context: context,
@@ -367,10 +365,9 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
-
   Future<void> _getUserId() async {
     try {
-      final userId = await InstallationTracker.getUserId();
+      final userId = UserService.getUserId();
       setState(() {
         _userId = userId;
       });
@@ -473,7 +470,10 @@ class _MyHomePageState extends State<MyHomePage> {
                   child: SelectableText(
                     _userId ?? 'Obteniendo ID...',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 12, color: Colors.deepPurple),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Colors.deepPurple,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 32),
@@ -539,7 +539,9 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
     ]; // variantes a agrupar
     final List<String> categorias = [
       'Turismo',
-      ...categoriasOriginal.where((c) => !turismoVariantes.contains(c) && c.toLowerCase() != 'turismo'),
+      ...categoriasOriginal.where(
+        (c) => !turismoVariantes.contains(c) && c.toLowerCase() != 'turismo',
+      ),
     ];
     final categoriaSeleccionada = await showDialog<String>(
       context: context,
@@ -595,11 +597,18 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
     DateTime? fechaMinima;
     Map<String, List<Map<String, dynamic>>>? agrupadasMinima;
     String? nombreEstacionMinima;
-    String normalizar(String s) => s.toLowerCase()
-        .replaceAll('á','a').replaceAll('é','e').replaceAll('í','i')
-        .replaceAll('ó','o').replaceAll('ú','u').replaceAll('ü','u')
-        .replaceAll(' ','');
-  String? subtipoNorm = subtipoSeleccionado != null ? normalizar(subtipoSeleccionado) : null;
+    String normalizar(String s) => s
+        .toLowerCase()
+        .replaceAll('á', 'a')
+        .replaceAll('é', 'e')
+        .replaceAll('í', 'i')
+        .replaceAll('ó', 'o')
+        .replaceAll('ú', 'u')
+        .replaceAll('ü', 'u')
+        .replaceAll(' ', '');
+    String? subtipoNorm = subtipoSeleccionado != null
+        ? normalizar(subtipoSeleccionado)
+        : null;
     String catNorm = normalizar(categoriaSeleccionada);
     for (final estacion in estacionesFiltradas) {
       final storeIdFav = estacion['store_id']?.toString();
@@ -615,7 +624,9 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
           final servicios = List<Map<String, dynamic>>.from(
             dataServicios['servicios'] ?? [],
           );
-          debugPrint('Estación $storeIdFav ($nombreEstacionFav) - TODOS los servicios:');
+          debugPrint(
+            'Estación $storeIdFav ($nombreEstacionFav) - TODOS los servicios:',
+          );
           for (final s in servicios) {
             debugPrint('  Servicio: "${s['nombre']}"');
           }
@@ -625,8 +636,24 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
             if (subtipoNorm != null) {
               // Si es turismo, aceptar solo servicios que contengan el subtipo y NO palabras excluidas
               final exclusiones = [
-                'cuadriciclo', 'quad', 'moto', 'motocicleta', 'remolque', 'camion', 'autobus',
-                'tractor', 'obras', 'servicios', 'agricola', 've', 'caravana', 'autocaravana', 'bus', 'furgoneta', 'ligero', 'semirremolque'
+                'cuadriciclo',
+                'quad',
+                'moto',
+                'motocicleta',
+                'remolque',
+                'camion',
+                'autobus',
+                'tractor',
+                'obras',
+                'servicios',
+                'agricola',
+                've',
+                'caravana',
+                'autocaravana',
+                'bus',
+                'furgoneta',
+                'ligero',
+                'semirremolque',
               ];
               final esExcluido = exclusiones.any((pal) => nombre.contains(pal));
               return nombre.contains(subtipoNorm) && !esExcluido;
@@ -780,29 +807,31 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
       final baseUrl = Config.estacionesUrl.replaceAll('/itv/estaciones', '');
       final healthUrl = Uri.parse('$baseUrl/health');
       final response = await http.get(healthUrl).timeout(Duration(seconds: 10));
-      
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final serverReady = data['server_ready'] ?? false;
-        
+
         if (mounted) {
           setState(() {
             servidorInicializando = !serverReady;
             if (servidorInicializando) {
-              mensajeCarga = "El servidor se está inicializando...\nEsto puede tardar hasta 1 minuto.";
+              mensajeCarga =
+                  "El servidor se está inicializando...\nEsto puede tardar hasta 1 minuto.";
             } else {
               mensajeCarga = "Cargando estaciones...";
             }
           });
         }
-        
+
         return serverReady;
       }
     } catch (e) {
       if (mounted) {
         setState(() {
           servidorInicializando = true;
-          mensajeCarga = "Conectando con el servidor...\nEsto puede tardar hasta 1 minuto.";
+          mensajeCarga =
+              "Conectando con el servidor...\nEsto puede tardar hasta 1 minuto.";
         });
       }
     }
@@ -812,12 +841,12 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
   Future<void> _waitForServerReady() async {
     int maxRetries = 24;
     int retries = 0;
-    
+
     while (retries < maxRetries && mounted) {
       await Future.delayed(Duration(seconds: 5));
-      
+
       if (!mounted) return; // Exit if widget is disposed
-      
+
       final serverReady = await _checkServerStatus();
       if (serverReady) {
         if (mounted) {
@@ -828,56 +857,58 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
         }
         return;
       }
-      
+
       retries++;
       if (mounted) {
         setState(() {
-          mensajeCarga = "El servidor se está inicializando...\nReintentando en 5 segundos... ($retries/$maxRetries)";
+          mensajeCarga =
+              "El servidor se está inicializando...\nReintentando en 5 segundos... ($retries/$maxRetries)";
         });
       }
     }
-    
+
     if (mounted) {
       setState(() {
         servidorInicializando = false;
-        mensajeCarga = "El servidor está tardando más de lo esperado. Reintentando...";
+        mensajeCarga =
+            "El servidor está tardando más de lo esperado. Reintentando...";
       });
     }
   }
 
   Future<void> cargarEstaciones() async {
     if (!mounted) return;
-    
+
     setState(() {
       cargandoEstaciones = true;
       mensajeCarga = "Conectando...";
     });
-    
+
     // Verificar estado del servidor
     final serverReady = await _checkServerStatus();
-    
+
     if (!serverReady && mounted) {
       await _waitForServerReady();
     }
-    
+
     final url = Uri.parse(Config.estacionesUrl);
     try {
       setState(() {
         mensajeCarga = "Cargando estaciones...";
         servidorInicializando = false;
       });
-      
+
       final response = await http.get(url).timeout(Duration(seconds: 15));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         estaciones = data['estaciones'];
-        
+
         if (mounted) {
           setState(() {
             mensajeCarga = "¡Estaciones cargadas correctamente!";
           });
         }
-        
+
         await Future.delayed(Duration(milliseconds: 1000));
       } else {
         throw Exception('Error del servidor: ${response.statusCode}');
@@ -890,12 +921,12 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
           mensajeCarga = "Error al cargar estaciones. Reintentando...";
         });
       }
-      
+
       Future.delayed(Duration(seconds: 3), () {
         if (mounted) cargarEstaciones();
       });
     }
-    
+
     if (mounted) {
       setState(() {
         cargandoEstaciones = false;
@@ -1064,7 +1095,9 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
                     ? Column(
                         children: [
                           CircularProgressIndicator(
-                            color: servidorInicializando ? Colors.orange : Colors.deepPurple,
+                            color: servidorInicializando
+                                ? Colors.orange
+                                : Colors.deepPurple,
                           ),
                           const SizedBox(height: 12),
                           Text(
@@ -1072,7 +1105,9 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               fontSize: 14,
-                              color: servidorInicializando ? Colors.orange[700] : Colors.deepPurple,
+                              color: servidorInicializando
+                                  ? Colors.orange[700]
+                                  : Colors.deepPurple,
                               fontStyle: FontStyle.italic,
                             ),
                           ),
