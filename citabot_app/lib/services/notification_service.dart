@@ -46,7 +46,11 @@ class NotificationService {
         String? userId = await InstallationTracker.getUserId();
         final prefs = await SharedPreferences.getInstance();
         List<String> favoritos = prefs.getStringList('favoritos') ?? [];
-        await _registerTokenWithBackend(token, userId: userId, favoritos: favoritos);
+        await _registerTokenWithBackend(
+          token,
+          userId: userId,
+          favoritos: favoritos,
+        );
         debugPrint(
           'Token FCM obtenido y registrado: \\${token.substring(0, 20)}...',
         );
@@ -56,7 +60,11 @@ class NotificationService {
     }
   }
 
-  static Future<void> _registerTokenWithBackend(String token, {String? userId, List<String>? favoritos}) async {
+  static Future<void> _registerTokenWithBackend(
+    String token, {
+    String? userId,
+    List<String>? favoritos,
+  }) async {
     try {
       final body = {
         'token': token,
@@ -129,6 +137,31 @@ class NotificationService {
 
   static Future<void> refreshToken() async {
     await _getAndRegisterToken();
+  }
+
+  static Future<void> updateFavorites(List<String> favoritos) async {
+    if (_currentToken == null) {
+      debugPrint('No hay token FCM disponible para actualizar favoritos');
+      return;
+    }
+
+    try {
+      final body = {'token': _currentToken!, 'favoritos': favoritos};
+
+      final response = await http.post(
+        Uri.parse('${Config.baseUrl}/update-favorites'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      );
+
+      if (response.statusCode == 200) {
+        debugPrint('Favoritos actualizados exitosamente en el backend');
+      } else {
+        debugPrint('Error actualizando favoritos: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('Error enviando favoritos al backend: $e');
+    }
   }
 
   static String? getCurrentToken() {
