@@ -122,6 +122,11 @@ class UserService {
 
   /// Initialize Firebase Cloud Messaging
   static Future<void> _initializeNotifications() async {
+    if (!Config.enableNotifications) {
+      debugPrint('🔕 Notifications disabled in config');
+      return;
+    }
+
     try {
       // Request permissions
       NotificationSettings settings = await _firebaseMessaging
@@ -209,15 +214,31 @@ class UserService {
         } else {
           // Log response body to help diagnose 5xx/502 responses from backend
           String respBody = response.body;
+          // Truncate HTML responses to avoid spam in logs
+          if (respBody.contains('<!DOCTYPE html>')) {
+            respBody = 'HTML Error Page (${respBody.length} chars)';
+          } else if (respBody.length > 200) {
+            respBody = '${respBody.substring(0, 200)}...';
+          }
+
           debugPrint(
             '❌ Error registering token (status ${response.statusCode}): $respBody',
           );
+
           // Retry on server errors (5xx)
           if (response.statusCode >= 500 && attempt < maxRetries) {
-            final backoff = Duration(milliseconds: 500 * attempt);
+            final backoff = Duration(milliseconds: 1000 * attempt);
+            debugPrint(
+              '🔄 Retrying in ${backoff.inSeconds}s... (attempt $attempt/$maxRetries)',
+            );
             await Future.delayed(backoff);
             continue;
           }
+
+          // For non-5xx errors, don't retry
+          debugPrint(
+            '⚠️ Giving up token registration after ${response.statusCode} error',
+          );
           return;
         }
       } catch (e) {

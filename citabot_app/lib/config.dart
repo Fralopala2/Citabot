@@ -3,6 +3,10 @@ class Config {
   static const bool isProduction =
       true; // Change to false for local development
 
+  // Notification settings
+  static const bool enableNotifications =
+      true; // Set to false to disable push notifications
+
   static const String _localUrl = 'http://10.0.2.2:8000';
   static const String _productionUrl =
       'https://citabot.onrender.com'; // Your actual Render URL
@@ -14,6 +18,6 @@ class Config {
   static String get serviciosUrl => '$baseUrl/itv/servicios';
   static String get fechasUrl => '$baseUrl/itv/fechas';
   static String get registerTokenUrl => '$baseUrl/register-token';
-  
+
   // Note: installation/usage tracking endpoints removed
 }

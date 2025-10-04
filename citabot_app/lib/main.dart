@@ -844,13 +844,8 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
         children: [
           Container(
             width: double.infinity,
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Colors.white, Color(0xFFE3D7FF)],
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-              ),
-            ),
+            height: double.infinity,
+            decoration: const BoxDecoration(color: Color(0xFFE8E8E8)),
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(16.0),
               child: Column(
@@ -900,6 +895,7 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
+                        color: Colors.black87,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -951,6 +947,7 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
+                        color: Colors.black87,
                       ),
                     ),
                     const SizedBox(height: 8),
