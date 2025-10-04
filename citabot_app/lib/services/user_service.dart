@@ -56,6 +56,17 @@ class UserService {
         if (_userId != null) {
           await prefs.setString(_userIdKey, _userId!);
           debugPrint('👤 New user ID created: $_userId');
+          // If we already have an FCM token registered, re-register it with the backend
+          // so the backend can associate the token with this newly created user_id.
+          try {
+            if (_currentToken != null) {
+              List<String> favoritos = prefs.getStringList('favoritos') ?? [];
+              await _registerTokenWithBackend(_currentToken!, favoritos: favoritos);
+              debugPrint('🔁 Re-registered existing token with new user_id');
+            }
+          } catch (e) {
+            debugPrint('⚠️ Error re-registering token after user id creation: $e');
+          }
         }
       } else {
         debugPrint('👤 Existing user ID loaded: $_userId');
