@@ -7,12 +7,8 @@ import 'package:http/http.dart' as http;
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'horas_disponibles_screen.dart';
 import 'config.dart';
 import 'favoritos_screen.dart';
-import 'categorias_servicio.dart';
-// ignore: unused_import
-import 'seleccionar_servicio_screen.dart';
 import 'services/user_service.dart';
 
 // Plugin de notificaciones locales
@@ -22,14 +18,8 @@ final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
 // Handler global para notificaciones en background
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  // Inicializar Firebase si no está inicializado
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-
   debugPrint('📨 Background message received: ${message.notification?.title}');
-  debugPrint('📨 Background message body: ${message.notification?.body}');
-  debugPrint('📨 Background message data: ${message.data}');
-
-  // Mostrar notificación local
   await _showLocalNotification(message);
 }
 
@@ -79,20 +69,11 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  // Configurar el handler para notificaciones en background
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-
-  // Inicializar notificaciones locales
   await _initializeLocalNotifications();
 
-  // Start non-blocking initialization tasks after showing UI
-  // to avoid delaying app startup. UserService.initialize may do
-  // network/auth work and MobileAds initialization may be slow.
-  // We still await Firebase because some Firebase APIs may require it.
   runApp(const MyApp());
 
-  // Initialize other services asynchronously without blocking UI
-  // Fire-and-forget initializations with error handling
   () async {
     try {
       await UserService.initialize();
@@ -145,12 +126,46 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
+  BannerAd? _bannerAd;
+  bool _isBannerAdReady = false;
   String? _token;
+
+  List<dynamic> estaciones = [];
+  List<Map<String, dynamic>> tiposVehiculo = [];
+  dynamic estacionSeleccionada;
+  dynamic tipoSeleccionado;
+  bool cargandoEstaciones = false;
+  bool cargandoTipos = false;
+  bool servidorInicializando = false;
+  String mensajeCarga = "Cargando estaciones...";
 
   @override
   void initState() {
     super.initState();
+    _bannerAd = BannerAd(
+      adUnitId: 'ca-app-pub-9610124391381160/2707419077',
+      size: AdSize.banner,
+      request: const AdRequest(),
+      listener: BannerAdListener(
+        onAdLoaded: (_) {
+          setState(() {
+            _isBannerAdReady = true;
+          });
+        },
+        onAdFailedToLoad: (ad, error) {
+          ad.dispose();
+          debugPrint('Error al cargar banner: ${error.message}');
+        },
+      ),
+    )..load();
+
     _getTokenAndSend();
+  }
+
+  @override
+  void dispose() {
+    _bannerAd?.dispose();
+    super.dispose();
   }
 
   Future<void> _getTokenAndSend() async {
@@ -172,7 +187,7 @@ class _MyHomePageState extends State<MyHomePage> {
       for (int i = 0; i < maxRetries; i++) {
         userId = UserService.getUserId();
         if (userId != null) break;
-        await Future.delayed(Duration(milliseconds: 500));
+        await Future.delayed(const Duration(milliseconds: 500));
       }
 
       final prefs = await SharedPreferences.getInstance();
@@ -199,6 +214,241 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
+  void mostrarErrorServicios(BuildContext context) {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Error'),
+        content: const Text(
+          'No se pudieron obtener los servicios para esta estación. Intenta de nuevo más tarde.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cerrar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<bool> _checkServerStatus() async {
+    try {
+      final baseUrl = Config.estacionesUrl.replaceAll('/itv/estaciones', '');
+      final healthUrl = Uri.parse('$baseUrl/health');
+      final response = await http
+          .get(healthUrl)
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final serverReady = data['server_ready'] ?? false;
+        final stationsAvailable = data['stations_available'] ?? false;
+
+        if (mounted) {
+          setState(() {
+            servidorInicializando = !serverReady;
+            if (!serverReady) {
+              mensajeCarga =
+                  "El servidor se está inicializando...\nEsto puede tardar hasta 2 minutos.";
+            } else if (!stationsAvailable) {
+              mensajeCarga = "Servidor listo, cargando estaciones...";
+            } else {
+              mensajeCarga = "Cargando estaciones...";
+            }
+          });
+        }
+
+        return serverReady && stationsAvailable;
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          servidorInicializando = true;
+          mensajeCarga =
+              "Conectando con el servidor...\nEsto puede tardar hasta 2 minutos.";
+        });
+      }
+    }
+    return false;
+  }
+
+  Future<void> cargarEstaciones() async {
+    setState(() {
+      cargandoEstaciones = true;
+      mensajeCarga = "Conectando...";
+    });
+
+    final serverReady = await _checkServerStatus();
+
+    if (!serverReady) {
+      await _waitForServerReady();
+    }
+
+    final url = Uri.parse(Config.estacionesUrl);
+    try {
+      setState(() {
+        mensajeCarga = "Cargando estaciones...";
+        servidorInicializando = false;
+      });
+
+      final response = await http.get(url).timeout(const Duration(seconds: 15));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        estaciones = data['estaciones'];
+
+        setState(() {
+          mensajeCarga = "¡Estaciones cargadas correctamente!";
+        });
+
+        await Future.delayed(const Duration(milliseconds: 1000));
+      } else {
+        throw Exception('Error del servidor: ${response.statusCode}');
+      }
+    } catch (e) {
+      estaciones = [];
+      setState(() {
+        mensajeCarga = "Error al cargar estaciones. Reintentando...";
+      });
+
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted) cargarEstaciones();
+      });
+    }
+
+    setState(() {
+      cargandoEstaciones = false;
+    });
+  }
+
+  Future<void> _waitForServerReady() async {
+    int maxRetries = 24;
+    int retries = 0;
+
+    while (retries < maxRetries) {
+      await Future.delayed(const Duration(seconds: 5));
+
+      final serverReady = await _checkServerStatus();
+      if (serverReady) {
+        setState(() {
+          servidorInicializando = false;
+          mensajeCarga = "¡Servidor listo! Cargando estaciones...";
+        });
+        return;
+      }
+
+      retries++;
+      setState(() {
+        mensajeCarga =
+            "El servidor se está inicializando...\nReintentando en 5 segundos... ($retries/$maxRetries)";
+      });
+    }
+
+    setState(() {
+      servidorInicializando = false;
+      mensajeCarga =
+          "El servidor está tardando más de lo esperado. Reintentando...";
+    });
+  }
+
+  Future<void> cargarTiposVehiculo() async {
+    tiposVehiculo = [];
+    if (estacionSeleccionada != null) {
+      final storeId = estacionSeleccionada['store_id'];
+      final url = Uri.parse('${Config.serviciosUrl}?store_id=$storeId');
+      try {
+        final response = await http.get(url);
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          tiposVehiculo = List<Map<String, dynamic>>.from(
+            data['servicios'] ?? [],
+          );
+        } else {
+          tiposVehiculo = [];
+          if (!mounted) return;
+          mostrarErrorServicios(context);
+        }
+      } catch (e) {
+        tiposVehiculo = [];
+        if (!mounted) return;
+        mostrarErrorServicios(context);
+      }
+    }
+    setState(() {
+      tipoSeleccionado = null;
+    });
+  }
+
+  Future<void> buscarFechas() async {
+    if (estacionSeleccionada == null || tipoSeleccionado == null) return;
+
+    final storeId = estacionSeleccionada['store_id'];
+    final serviceId = tipoSeleccionado['service'];
+    final url = Uri.parse(
+      '${Config.fechasUrl}?store=$storeId&service=$serviceId&n=10',
+    );
+
+    String mensaje = 'No hay fechas disponibles.';
+
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+        },
+      );
+
+      if (response.statusCode == 200 && response.body.isNotEmpty) {
+        final data = jsonDecode(response.body);
+        final fechas = data['fechas_horas'] as List<dynamic>?;
+
+        if (fechas != null && fechas.isNotEmpty) {
+          final Map<String, List<String>> fechasPorDia = {};
+          for (var f in fechas) {
+            final fecha = f['fecha'] ?? '';
+            final hora = f['hora'] ?? '';
+            if (fecha.isNotEmpty && hora.isNotEmpty) {
+              if (!fechasPorDia.containsKey(fecha)) fechasPorDia[fecha] = [];
+              fechasPorDia[fecha]!.add(hora);
+            }
+          }
+
+          if (fechasPorDia.isNotEmpty) {
+            final buffer = StringBuffer();
+            fechasPorDia.forEach((fecha, horas) {
+              buffer.writeln('$fecha:');
+              for (String hora in horas) {
+                buffer.writeln('  • $hora');
+              }
+              buffer.writeln();
+            });
+            mensaje = buffer.toString().trim();
+          }
+        }
+      }
+    } catch (e) {
+      mensaje = 'Error de conexión: $e';
+    }
+
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Fechas disponibles'),
+        content: Text(mensaje),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cerrar'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -207,218 +457,370 @@ class _MyHomePageState extends State<MyHomePage> {
         title: const Text('Citabot'),
         centerTitle: true,
         elevation: 4,
-      ),
-      body: Container(
-        width: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Colors.white, Color(0xFFE3D7FF)],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.favorite, color: Colors.white),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => FavoritosScreen(estaciones: estaciones),
+                ),
+              );
+            },
           ),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Image.asset('assets/images/citabot.png', width: 120, height: 120),
-            const SizedBox(height: 16),
-            const Text(
-              'Bienvenido a Citabot',
-              style: TextStyle(
-                fontSize: 26,
-                fontWeight: FontWeight.bold,
-                color: Colors.deepPurple,
+        ],
+      ),
+      body: Stack(
+        children: [
+          Container(
+            width: double.infinity,
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Colors.white, Color(0xFFE3D7FF)],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
               ),
             ),
-            const SizedBox(height: 16),
-            const Text(
-              '¿Qué cita quieres buscar?',
-              style: TextStyle(fontSize: 18),
-            ),
-            const SizedBox(height: 32),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.deepPurple,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 32,
-                  vertical: 16,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              icon: const Icon(Icons.car_repair, color: Colors.white),
-              label: const Text(
-                'Buscar cita ITV',
-                style: TextStyle(color: Colors.white, fontSize: 18),
-              ),
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => FavoritosScreen(estaciones: []),
-                  ),
-                );
-              },
-            ),
-            const SizedBox(height: 32),
-            const Text(
-              'Tu token FCM es:',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: SelectableText(
-                _token ?? 'Obteniendo token...',
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 12),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32.0),
-              child: SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.grey[800],
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Logo Citabot
+                  Center(
+                    child: Image.asset(
+                      'assets/images/citabot.png',
+                      width: 120,
+                      height: 120,
                     ),
                   ),
-                  icon: const Icon(
-                    Icons.notifications_off,
-                    color: Colors.white,
-                  ),
-                  label: const Text(
-                    'Dejar de recibir notificaciones',
-                    style: TextStyle(color: Colors.white),
-                  ),
-                  onPressed: () async {
-                    // Confirmación antes de dar de baja
-                    final confirmed = await showDialog<bool>(
-                      context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text('Confirmar baja'),
-                        content: const Text(
-                          '¿Estás seguro de que quieres dejar de recibir notificaciones?',
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.of(context).pop(false),
-                            child: const Text('Cancelar'),
-                          ),
-                          ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.red,
-                            ),
-                            onPressed: () => Navigator.of(context).pop(true),
-                            child: const Text('Sí, darme de baja'),
-                          ),
-                        ],
+                  const SizedBox(height: 16),
+                  const Center(
+                    child: Text(
+                      'Bienvenido a Citabot',
+                      style: TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.deepPurple,
                       ),
-                    );
-
-                    if (confirmed != true) return;
-
-                    // Widget might have been disposed while waiting for the dialog.
-                    if (!mounted) return;
-
-                    final scaffold = ScaffoldMessenger.of(context);
-                    scaffold.showSnackBar(
-                      const SnackBar(content: Text('Procesando baja...')),
-                    );
-                    final success =
-                        await UserService.unsubscribeFromNotifications();
-                    if (!mounted) return;
-                    scaffold.hideCurrentSnackBar();
-                    if (success) {
-                      scaffold.showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Te has dado de baja de las notificaciones',
-                          ),
-                        ),
-                      );
-                      setState(() {
-                        _token = null;
-                      });
-                    } else {
-                      scaffold.showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'No se pudo procesar la baja, inténtalo más tarde',
-                          ),
-                        ),
-                      );
-                    }
-                  },
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32.0),
-              child: SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green[700],
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
                     ),
-                    shape: RoundedRectangleBorder(
+                  ),
+                  const SizedBox(height: 16),
+                  const Center(
+                    child: Text(
+                      '¿Qué cita quieres buscar?',
+                      style: TextStyle(fontSize: 18),
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+
+                  // Botón para cargar estaciones
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.deepPurple,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    icon: const Icon(Icons.refresh, color: Colors.white),
+                    label: Text(
+                      cargandoEstaciones
+                          ? mensajeCarga
+                          : 'Cargar Estaciones ITV',
+                      style: const TextStyle(color: Colors.white, fontSize: 16),
+                    ),
+                    onPressed: cargandoEstaciones ? null : cargarEstaciones,
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // Dropdown de estaciones
+                  if (estaciones.isNotEmpty) ...[
+                    const Text(
+                      'Selecciona una estación:',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey),
+                        borderRadius: BorderRadius.circular(8),
+                        color: Colors.white,
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<dynamic>(
+                          value: estacionSeleccionada,
+                          hint: const Text('Selecciona una estación'),
+                          isExpanded: true,
+                          items: estaciones.map<DropdownMenuItem<dynamic>>((
+                            estacion,
+                          ) {
+                            final nombre =
+                                '${estacion['provincia'] ?? ''} - ${estacion['nombre'] ?? ''} (${estacion['tipo'] ?? ''})';
+                            return DropdownMenuItem<dynamic>(
+                              value: estacion,
+                              child: Text(
+                                nombre,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            );
+                          }).toList(),
+                          onChanged: (value) {
+                            setState(() {
+                              estacionSeleccionada = value;
+                              tipoSeleccionado = null;
+                              tiposVehiculo = [];
+                            });
+                            if (value != null) {
+                              cargarTiposVehiculo();
+                            }
+                          },
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+
+                  // Dropdown de tipos de vehículo
+                  if (tiposVehiculo.isNotEmpty) ...[
+                    const Text(
+                      'Selecciona el tipo de servicio:',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey),
+                        borderRadius: BorderRadius.circular(8),
+                        color: Colors.white,
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<dynamic>(
+                          value: tipoSeleccionado,
+                          hint: const Text('Selecciona un servicio'),
+                          isExpanded: true,
+                          items: tiposVehiculo.map<DropdownMenuItem<dynamic>>((
+                            tipo,
+                          ) {
+                            return DropdownMenuItem<dynamic>(
+                              value: tipo,
+                              child: Text(
+                                tipo['nombre'] ?? '',
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            );
+                          }).toList(),
+                          onChanged: (value) {
+                            setState(() {
+                              tipoSeleccionado = value;
+                            });
+                          },
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+
+                  // Botón de buscar fechas
+                  if (estacionSeleccionada != null && tipoSeleccionado != null)
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      icon: const Icon(Icons.search, color: Colors.white),
+                      label: const Text(
+                        'Buscar Fechas Disponibles',
+                        style: TextStyle(color: Colors.white, fontSize: 16),
+                      ),
+                      onPressed: buscarFechas,
+                    ),
+
+                  const SizedBox(height: 32),
+
+                  // Sección del token FCM
+                  const Center(
+                    child: Text(
+                      'Tu token FCM es:',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[100],
                       borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.grey[300]!),
+                    ),
+                    child: SelectableText(
+                      _token ?? 'Obteniendo token...',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 12),
                     ),
                   ),
-                  icon: const Icon(Icons.refresh, color: Colors.white),
-                  label: const Text(
-                    'Volver a suscribirse',
-                    style: TextStyle(color: Colors.white),
+                  const SizedBox(height: 20),
+
+                  // Botones de notificaciones
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.grey[800],
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      icon: const Icon(
+                        Icons.notifications_off,
+                        color: Colors.white,
+                      ),
+                      label: const Text(
+                        'Dejar de recibir notificaciones',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                      onPressed: () async {
+                        final confirmed = await showDialog<bool>(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Text('Confirmar baja'),
+                            content: const Text(
+                              '¿Estás seguro de que quieres dejar de recibir notificaciones?',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () =>
+                                    Navigator.of(context).pop(false),
+                                child: const Text('Cancelar'),
+                              ),
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.red,
+                                ),
+                                onPressed: () =>
+                                    Navigator.of(context).pop(true),
+                                child: const Text('Sí, darme de baja'),
+                              ),
+                            ],
+                          ),
+                        );
+
+                        if (confirmed != true) return;
+                        if (!mounted) return;
+
+                        final scaffold = ScaffoldMessenger.of(context);
+                        scaffold.showSnackBar(
+                          const SnackBar(content: Text('Procesando baja...')),
+                        );
+                        final success =
+                            await UserService.unsubscribeFromNotifications();
+                        if (!mounted) return;
+                        scaffold.hideCurrentSnackBar();
+                        if (success) {
+                          scaffold.showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Te has dado de baja de las notificaciones',
+                              ),
+                            ),
+                          );
+                          setState(() {
+                            _token = null;
+                          });
+                        } else {
+                          scaffold.showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'No se pudo procesar la baja, inténtalo más tarde',
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                    ),
                   ),
-                  onPressed: () async {
-                    final scaffold = ScaffoldMessenger.of(context);
-                    scaffold.showSnackBar(
-                      const SnackBar(content: Text('Re-suscribiendo...')),
-                    );
-                    await UserService.refreshToken();
-                    if (!mounted) return;
-                    scaffold.hideCurrentSnackBar();
-                    // Re-fetch token for display
-                    final token = UserService.getCurrentToken();
-                    if (token != null) {
-                      scaffold.showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Te has vuelto a suscribir a las notificaciones',
-                          ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green[700],
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                      );
-                      if (!mounted) return;
-                      setState(() {
-                        _token = token;
-                      });
-                    } else {
-                      scaffold.showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'No se pudo re-suscribir, inténtalo más tarde',
-                          ),
-                        ),
-                      );
-                    }
-                  },
-                ),
+                      ),
+                      icon: const Icon(Icons.refresh, color: Colors.white),
+                      label: const Text(
+                        'Volver a suscribirse',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                      onPressed: () async {
+                        final scaffold = ScaffoldMessenger.of(context);
+                        scaffold.showSnackBar(
+                          const SnackBar(content: Text('Re-suscribiendo...')),
+                        );
+                        await UserService.refreshToken();
+                        if (!mounted) return;
+                        scaffold.hideCurrentSnackBar();
+                        final token = UserService.getCurrentToken();
+                        if (token != null) {
+                          scaffold.showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Te has vuelto a suscribir a las notificaciones',
+                              ),
+                            ),
+                          );
+                          if (!mounted) return;
+                          setState(() {
+                            _token = token;
+                          });
+                        } else {
+                          scaffold.showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'No se pudo re-suscribir, inténtalo más tarde',
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 80), // Espacio para el banner
+                ],
               ),
             ),
-          ],
-        ),
+          ),
+          // Banner publicitario
+          if (_isBannerAdReady && _bannerAd != null)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: MediaQuery.of(context).viewPadding.bottom + 4,
+              child: Container(
+                width: _bannerAd!.size.width.toDouble(),
+                height: _bannerAd!.size.height.toDouble(),
+                alignment: Alignment.center,
+                child: AdWidget(ad: _bannerAd!),
+              ),
+            ),
+        ],
       ),
     );
   }
