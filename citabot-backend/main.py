@@ -577,6 +577,40 @@ async def test_notification(request: Request):
         print(f"Error sending test notification: {e}")
         return JSONResponse({"error": "Failed to send test notification"}, status_code=500)
 
+# Endpoint para enviar notificación de prueba automática
+@app.post("/notifications/test-auto")
+async def test_notification_auto():
+    """Send test notification to all registered tokens"""
+    try:
+        from notifier import registered_tokens
+        
+        if not registered_tokens:
+            return {"message": "No registered tokens found", "sent": 0}
+        
+        sent_count = 0
+        for token in registered_tokens.keys():
+            try:
+                success = send_new_appointment_notification(
+                    "🧪 Prueba de Notificación",
+                    "2025-12-25", 
+                    "10:30",
+                    specific_token=token
+                )
+                if success:
+                    sent_count += 1
+            except Exception as e:
+                print(f"Error sending test to {token[:20]}...: {e}")
+        
+        return {
+            "message": f"Test notifications sent to {sent_count} devices",
+            "total_tokens": len(registered_tokens),
+            "sent": sent_count
+        }
+        
+    except Exception as e:
+        print(f"Error in auto test: {e}")
+        return JSONResponse({"error": "Failed to send test notifications"}, status_code=500)
+
 # Endpoint para forzar actualización de favoritos
 @app.post("/notifications/force-refresh")
 async def force_refresh_favorites():

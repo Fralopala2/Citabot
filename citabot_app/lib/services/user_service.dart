@@ -2,6 +2,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -37,7 +38,7 @@ class UserService {
     // 2. Initialize notifications
     await _initializeNotifications();
 
-  // Installation/usage tracking removed from project.
+    // Installation/usage tracking removed from project.
 
     debugPrint('✅ UserService initialized successfully');
   }
@@ -61,11 +62,16 @@ class UserService {
           try {
             if (_currentToken != null) {
               List<String> favoritos = prefs.getStringList('favoritos') ?? [];
-              await _registerTokenWithBackend(_currentToken!, favoritos: favoritos);
+              await _registerTokenWithBackend(
+                _currentToken!,
+                favoritos: favoritos,
+              );
               debugPrint('🔁 Re-registered existing token with new user_id');
             }
           } catch (e) {
-            debugPrint('⚠️ Error re-registering token after user id creation: $e');
+            debugPrint(
+              '⚠️ Error re-registering token after user id creation: $e',
+            );
           }
         }
       } else {
@@ -191,15 +197,21 @@ class UserService {
         if (response.statusCode == 200) {
           try {
             final data = jsonDecode(response.body);
-            debugPrint('✅ Token registered. Devices: ${data['registered_devices']}');
+            debugPrint(
+              '✅ Token registered. Devices: ${data['registered_devices']}',
+            );
           } catch (e) {
-            debugPrint('✅ Token registered but failed to parse response body: $e');
+            debugPrint(
+              '✅ Token registered but failed to parse response body: $e',
+            );
           }
           return;
         } else {
           // Log response body to help diagnose 5xx/502 responses from backend
           String respBody = response.body;
-          debugPrint('❌ Error registering token (status ${response.statusCode}): $respBody');
+          debugPrint(
+            '❌ Error registering token (status ${response.statusCode}): $respBody',
+          );
           // Retry on server errors (5xx)
           if (response.statusCode >= 500 && attempt < maxRetries) {
             final backoff = Duration(milliseconds: 500 * attempt);
@@ -250,8 +262,44 @@ class UserService {
 
   /// Show in-app notification
   static void _showInAppNotification(RemoteMessage message) {
-    // Could show SnackBar or custom dialog here
+    // Show local notification even when app is in foreground
+    _showLocalNotificationFromService(message);
     debugPrint('📱 In-app notification: ${message.notification?.body}');
+  }
+
+  /// Show local notification from service
+  static Future<void> _showLocalNotificationFromService(
+    RemoteMessage message,
+  ) async {
+    try {
+      // Import the local notifications plugin
+      final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+          FlutterLocalNotificationsPlugin();
+
+      const AndroidNotificationDetails androidPlatformChannelSpecifics =
+          AndroidNotificationDetails(
+            'citabot_channel',
+            'Citabot Notifications',
+            channelDescription: 'Notificaciones de citas ITV disponibles',
+            importance: Importance.max,
+            priority: Priority.high,
+            showWhen: true,
+            icon: '@mipmap/ic_launcher',
+          );
+
+      const NotificationDetails platformChannelSpecifics = NotificationDetails(
+        android: androidPlatformChannelSpecifics,
+      );
+
+      await flutterLocalNotificationsPlugin.show(
+        message.hashCode,
+        message.notification?.title ?? 'Nueva cita disponible',
+        message.notification?.body ?? 'Hay una nueva cita ITV disponible',
+        platformChannelSpecifics,
+      );
+    } catch (e) {
+      debugPrint('Error showing local notification: $e');
+    }
   }
 
   /// Handle notification tap
@@ -352,12 +400,14 @@ class UserService {
           debugPrint('⚠️ Error deleting local FCM token: $e');
         }
 
-  // Clear stored token in memory; keep user preferences (favoritos) intact
-  _currentToken = null;
+        // Clear stored token in memory; keep user preferences (favoritos) intact
+        _currentToken = null;
 
         return true;
       } else {
-        debugPrint('❌ Backend responded with ${response.statusCode} when unregistering');
+        debugPrint(
+          '❌ Backend responded with ${response.statusCode} when unregistering',
+        );
         return false;
       }
     } catch (e) {
