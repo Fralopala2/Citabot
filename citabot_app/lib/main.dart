@@ -5,6 +5,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'horas_disponibles_screen.dart';
@@ -645,7 +646,7 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
       '${Config.fechasUrl}?store=$storeId&service=$serviceId&n=10',
     );
 
-    String mensaje = 'No hay fechas disponibles.';
+    List<Map<String, dynamic>> fechasDisponibles = [];
 
     try {
       final response = await http.get(
@@ -662,39 +663,107 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
         final fechas = data['fechas_horas'] as List<dynamic>?;
 
         if (fechas != null && fechas.isNotEmpty) {
-          final Map<String, List<String>> fechasPorDia = {};
           for (var f in fechas) {
             final fecha = f['fecha'] ?? '';
             final hora = f['hora'] ?? '';
             if (fecha.isNotEmpty && hora.isNotEmpty) {
-              if (!fechasPorDia.containsKey(fecha)) fechasPorDia[fecha] = [];
-              fechasPorDia[fecha]!.add(hora);
+              fechasDisponibles.add({
+                'fecha': fecha,
+                'hora': hora,
+                'store': storeId,
+                'service': serviceId,
+              });
             }
-          }
-
-          if (fechasPorDia.isNotEmpty) {
-            final buffer = StringBuffer();
-            fechasPorDia.forEach((fecha, horas) {
-              buffer.writeln('$fecha:');
-              for (String hora in horas) {
-                buffer.writeln('  • $hora');
-              }
-              buffer.writeln();
-            });
-            mensaje = buffer.toString().trim();
           }
         }
       }
     } catch (e) {
-      mensaje = 'Error de conexión: $e';
+      debugPrint('Error de conexión: $e');
     }
 
     if (!mounted) return;
+
+    if (fechasDisponibles.isEmpty) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Sin fechas disponibles'),
+          content: const Text(
+            'No hay fechas disponibles para esta estación y servicio.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cerrar'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    // Agrupar por fecha
+    final Map<String, List<Map<String, dynamic>>> fechasPorDia = {};
+    for (var cita in fechasDisponibles) {
+      final fecha = cita['fecha'];
+      if (!fechasPorDia.containsKey(fecha)) fechasPorDia[fecha] = [];
+      fechasPorDia[fecha]!.add(cita);
+    }
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Fechas disponibles'),
-        content: Text(mensaje),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView(
+            shrinkWrap: true,
+            children: fechasPorDia.entries.map((entry) {
+              final fecha = entry.key;
+              final citas = entry.value;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: Text(
+                      fecha,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                  ...citas.map(
+                    (cita) => ListTile(
+                      dense: true,
+                      title: Text(cita['hora']),
+                      trailing: IconButton(
+                        icon: const Icon(
+                          Icons.open_in_new,
+                          color: Colors.deepPurple,
+                        ),
+                        tooltip: 'Reservar cita',
+                        onPressed: () async {
+                          final reservaUrl =
+                              'https://citaitvsitval.com/?store=${cita['store']}&service=${cita['service']}&date=${cita['fecha']}';
+                          final uri = Uri.parse(reservaUrl);
+                          if (await canLaunchUrl(uri)) {
+                            await launchUrl(
+                              uri,
+                              mode: LaunchMode.externalApplication,
+                            );
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+                  const Divider(),
+                ],
+              );
+            }).toList(),
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
