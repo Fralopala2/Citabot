@@ -118,6 +118,18 @@ def update_user_favorites(token, favoritos):
         return True
     return False
 
+def update_user_last_seen_appointments(token, store, service, appointments_list):
+    """
+    Actualiza las últimas citas vistas por un usuario para una estación/servicio específico.
+    """
+    if token in registered_tokens:
+        key = f"last_seen_{store}_{service}"
+        registered_tokens[token][key] = appointments_list
+        save_tokens_data()
+        print(f"Updated last seen appointments for token {token[:20]}... store {store} service {service}: {len(appointments_list)} appointments")
+        return True
+    return False
+
 def send_notification_to_all(title, message, data=None):
     """
     Envía notificación push a todos los dispositivos registrados (legacy, no filtra).
@@ -199,7 +211,7 @@ def send_new_appointment_notification(estacion_nombre, fecha, hora, specific_tok
     Si specific_token está presente, solo se envía a ese token.
     Si no, se filtra por favoritos usando send_notification_to_favorites con store_id.
     """
-    title = "🎉 Nueva cita disponible!"
+    title = "🎉 Nueva cita ITV disponible!"
     message = f"{estacion_nombre}\n📅 {fecha} a las {hora}"
     data = {
         "type": "new_appointment",
@@ -210,8 +222,10 @@ def send_new_appointment_notification(estacion_nombre, fecha, hora, specific_tok
     }
     
     if specific_token:
-        send_notification_to_token(title, message, data, specific_token)
+        print(f"🔔 Sending personalized notification to {specific_token[:20]}...: {title} - {message}")
+        return send_notification_to_token(title, message, data, specific_token)
     elif store_id:
+        print(f"🔔 Sending notification to all users with favorite station {store_id}: {title} - {message}")
         # Usar el ID numérico de la estación para filtrar favoritos
         send_notification_to_favorites(title, message, data, store_id)
     else:

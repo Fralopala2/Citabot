@@ -112,6 +112,27 @@ def detailed_health_check():
 def cache_key(store, service):
     return f"{store}:{service}"
 
+def get_station_name(store_id):
+    """Get the real station name from store_id"""
+    try:
+        # Get stations data
+        group_data = scraper.get_group_startup("", "1")
+        estaciones = scraper.extract_stations(group_data)
+        
+        # Find the station with matching store_id
+        for estacion in estaciones:
+            if str(estacion.get('store_id')) == str(store_id):
+                provincia = estacion.get('provincia', '')
+                nombre = estacion.get('nombre', '')
+                tipo = estacion.get('tipo', '')
+                return f"{provincia} - {nombre} ({tipo})"
+        
+        # Fallback if not found
+        return f"Estación {store_id}"
+    except Exception as e:
+        print(f"Error getting station name for {store_id}: {e}")
+        return f"Estación {store_id}"
+
 def get_cached_slots(store, service):
     key = cache_key(store, service)
     with slots_cache_lock:
@@ -120,54 +141,98 @@ def get_cached_slots(store, service):
             return entry['data']
     return None
 
-def detect_new_appointments(old_data, new_data, store, service):
-    """Detects new appointments by comparing old and new data"""
-    if not old_data or not new_data:
+def detect_new_appointments_for_users(old_data, new_data, store, service):
+    """Detects new appointments and determines which users should be notified"""
+    if not new_data:
         return []
     
-    # Create sets of appointment identifiers for comparison
-    old_appointments = set()
-    for item in old_data:
-        if isinstance(item, dict) and 'fecha' in item and 'hora' in item:
-            old_appointments.add(f"{item['fecha']}_{item['hora']}")
+    from notifier import registered_tokens
     
-    new_appointments = []
+    # Get all users who have this station in their favorites
+    interested_users = []
+    store_str = str(store)
+    
+    for token, token_data in registered_tokens.items():
+        favoritos = token_data.get("favoritos", [])
+        favoritos_str = [str(f) for f in favoritos] if favoritos else []
+        if store_str in favoritos_str:
+            user_id = token_data.get("user_id")
+            interested_users.append({
+                'token': token,
+                'user_id': user_id,
+                'last_seen_appointments': token_data.get(f"last_seen_{store}_{service}", [])
+            })
+    
+    if not interested_users:
+        print(f"No users interested in store {store}, service {service}")
+        return []
+    
+    print(f"Found {len(interested_users)} users interested in store {store}, service {service}")
+    
+    # Create current appointments set
+    current_appointments = set()
+    current_appointments_list = []
     for item in new_data:
         if isinstance(item, dict) and 'fecha' in item and 'hora' in item:
             appointment_id = f"{item['fecha']}_{item['hora']}"
-            if appointment_id not in old_appointments:
-                # This is a new appointment
-                new_appointments.append({
-                    'store_id': int(store),  # ID numérico de la estación
-                    'estacion_nombre': f"Estación {store} - Servicio {service}",
-                    'fecha': item['fecha'],
-                    'hora': item['hora']
-                })
+            current_appointments.add(appointment_id)
+            current_appointments_list.append(appointment_id)
     
-    if new_appointments:
-        print(f"Detected {len(new_appointments)} new appointments for store {store}, service {service}")
+    # Check each user individually
+    notifications_to_send = []
+    estacion_nombre = None
     
-    return new_appointments
+    for user in interested_users:
+        user_last_seen = set(user['last_seen_appointments'])
+        user_new_appointments = current_appointments - user_last_seen
+        
+        if user_new_appointments:
+            if estacion_nombre is None:
+                estacion_nombre = get_station_name(store)
+            
+            print(f"User {user['user_id']} has {len(user_new_appointments)} new appointments")
+            
+            # Create notification data for this user
+            for item in new_data:
+                if isinstance(item, dict) and 'fecha' in item and 'hora' in item:
+                    appointment_id = f"{item['fecha']}_{item['hora']}"
+                    if appointment_id in user_new_appointments:
+                        notifications_to_send.append({
+                            'token': user['token'],
+                            'user_id': user['user_id'],
+                            'store_id': int(store),
+                            'estacion_nombre': estacion_nombre,
+                            'fecha': item['fecha'],
+                            'hora': item['hora']
+                        })
+        
+        # Update user's last seen appointments
+        from notifier import update_user_last_seen_appointments
+        update_user_last_seen_appointments(user['token'], store, service, current_appointments_list)
+    
+    return notifications_to_send
 
 def set_cached_slots(store, service, data):
     key = cache_key(store, service)
     
     with slots_cache_lock:
-        # Check if there are new appointments
+        # Check if there are new appointments for specific users
         old_data = slots_cache.get(key, {}).get('data', [])
-        new_appointments = detect_new_appointments(old_data, data, store, service)
+        user_notifications = detect_new_appointments_for_users(old_data, data, store, service)
         
         # Update cache
         slots_cache[key] = {'data': data, 'timestamp': time.time()}
         
-        # Send notifications for new appointments
-        if new_appointments:
-            for appointment in new_appointments:
+        # Send personalized notifications
+        if user_notifications:
+            print(f"Sending {len(user_notifications)} personalized notifications")
+            for notification in user_notifications:
                 send_new_appointment_notification(
-                    appointment['estacion_nombre'],
-                    appointment['fecha'], 
-                    appointment['hora'],
-                    store_id=appointment['store_id']
+                    notification['estacion_nombre'],
+                    notification['fecha'], 
+                    notification['hora'],
+                    specific_token=notification['token'],
+                    store_id=notification['store_id']
                 )
 
 # Background thread to refresh cache periodically
@@ -175,7 +240,31 @@ def background_cache_refresher():
     """Updates available appointments cache in background respectfully"""
     while True:
         try:
-            # Refresh all keys that are already in cache
+            # Get all favorite stations from registered tokens
+            from notifier import registered_tokens
+            favorite_stations = set()
+            
+            for token_data in registered_tokens.values():
+                favoritos = token_data.get("favoritos", [])
+                if favoritos:
+                    favorite_stations.update(favoritos)
+            
+            print(f"Found {len(favorite_stations)} favorite stations from registered users: {list(favorite_stations)}")
+            
+            # Add favorite stations to cache monitoring with common services
+            # Common service IDs for different vehicle types
+            common_services = ["227", "228", "229"]  # Turismo diesel, gasolina, eléctrico
+            
+            for station in favorite_stations:
+                for service in common_services:
+                    key = cache_key(station, service)
+                    if key not in slots_cache:
+                        print(f"Adding favorite station {station} service {service} to monitoring")
+                        # Initialize with empty data so it gets refreshed
+                        with slots_cache_lock:
+                            slots_cache[key] = {'data': [], 'timestamp': 0}
+            
+            # Refresh all keys that are now in cache
             with slots_cache_lock:
                 keys = list(slots_cache.keys())
             
@@ -434,11 +523,26 @@ async def update_favorites_endpoint(request: Request):
 def get_notification_stats():
     """Returns notification system statistics"""
     firebase_enabled = is_firebase_enabled()
+    
+    # Get favorite stations info
+    from notifier import registered_tokens
+    favorite_stations = set()
+    tokens_with_favorites = 0
+    
+    for token_data in registered_tokens.values():
+        favoritos = token_data.get("favoritos", [])
+        if favoritos:
+            favorite_stations.update(favoritos)
+            tokens_with_favorites += 1
+    
     return {
         "registered_devices": get_registered_tokens_count(),
+        "tokens_with_favorites": tokens_with_favorites,
+        "unique_favorite_stations": list(favorite_stations),
         "firebase_enabled": firebase_enabled,
         "cache_ttl": CACHE_TTL,
         "background_refresh_interval": BACKGROUND_REFRESH_INTERVAL,
+        "cache_entries": len(slots_cache),
         "status": "active" if firebase_enabled else "disabled"
     }
 
@@ -472,6 +576,83 @@ async def test_notification(request: Request):
     except Exception as e:
         print(f"Error sending test notification: {e}")
         return JSONResponse({"error": "Failed to send test notification"}, status_code=500)
+
+# Endpoint para forzar actualización de favoritos
+@app.post("/notifications/force-refresh")
+async def force_refresh_favorites():
+    """Force refresh appointments for all favorite stations"""
+    try:
+        from notifier import registered_tokens
+        favorite_stations = set()
+        
+        for token_data in registered_tokens.values():
+            favoritos = token_data.get("favoritos", [])
+            if favoritos:
+                favorite_stations.update(favoritos)
+        
+        if not favorite_stations:
+            return {"message": "No favorite stations found", "refreshed": 0}
+        
+        print(f"Force refreshing {len(favorite_stations)} favorite stations...")
+        
+        # Common service IDs for different vehicle types
+        common_services = ["227", "228", "229"]
+        refreshed_count = 0
+        
+        for station in favorite_stations:
+            for service in common_services:
+                try:
+                    print(f"Force refreshing station {station}, service {service}")
+                    data = scraper.get_next_available_slots(station, service, "", 10)
+                    set_cached_slots(station, service, data)
+                    refreshed_count += 1
+                    time.sleep(2)  # Small delay to be respectful
+                except Exception as e:
+                    print(f"Error refreshing {station}:{service}: {e}")
+        
+        return {
+            "message": f"Force refresh completed",
+            "favorite_stations": list(favorite_stations),
+            "refreshed_combinations": refreshed_count
+        }
+        
+    except Exception as e:
+        print(f"Error in force refresh: {e}")
+        return JSONResponse({"error": "Failed to force refresh"}, status_code=500)
+
+# Endpoint para limpiar historial de citas vistas (útil para testing)
+@app.post("/notifications/clear-user-history")
+async def clear_user_history(request: Request):
+    """Clear a user's appointment history to force notifications"""
+    try:
+        data = await request.json()
+        token = data.get("token")
+        
+        if not token:
+            return JSONResponse({"error": "Token is required"}, status_code=400)
+        
+        from notifier import registered_tokens, save_tokens_data
+        
+        if token not in registered_tokens:
+            return JSONResponse({"error": "Token not found"}, status_code=404)
+        
+        # Remove all last_seen_* keys for this user
+        user_data = registered_tokens[token]
+        keys_to_remove = [key for key in user_data.keys() if key.startswith("last_seen_")]
+        
+        for key in keys_to_remove:
+            del user_data[key]
+        
+        save_tokens_data()
+        
+        return {
+            "message": f"Cleared {len(keys_to_remove)} appointment history entries for user",
+            "cleared_keys": keys_to_remove
+        }
+        
+    except Exception as e:
+        print(f"Error clearing user history: {e}")
+        return JSONResponse({"error": "Failed to clear user history"}, status_code=500)
 
 
 
