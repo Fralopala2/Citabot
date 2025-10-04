@@ -7,8 +7,10 @@ import 'package:http/http.dart' as http;
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'horas_disponibles_screen.dart';
 import 'config.dart';
 import 'favoritos_screen.dart';
+import 'categorias_servicio.dart';
 import 'services/user_service.dart';
 
 // Plugin de notificaciones locales
@@ -23,7 +25,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await _showLocalNotification(message);
 }
 
-// Función para inicializar notificaciones locales
+// Funcion para inicializar notificaciones locales
 Future<void> _initializeLocalNotifications() async {
   const AndroidInitializationSettings initializationSettingsAndroid =
       AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -130,15 +132,6 @@ class _MyHomePageState extends State<MyHomePage> {
   bool _isBannerAdReady = false;
   String? _token;
 
-  List<dynamic> estaciones = [];
-  List<Map<String, dynamic>> tiposVehiculo = [];
-  dynamic estacionSeleccionada;
-  dynamic tipoSeleccionado;
-  bool cargandoEstaciones = false;
-  bool cargandoTipos = false;
-  bool servidorInicializando = false;
-  String mensajeCarga = "Cargando estaciones...";
-
   @override
   void initState() {
     super.initState();
@@ -213,6 +206,269 @@ class _MyHomePageState extends State<MyHomePage> {
       debugPrint("Error de conexión: $e");
     }
   }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.deepPurple,
+        title: const Text('Citabot'),
+        centerTitle: true,
+        elevation: 4,
+      ),
+      body: Stack(
+        children: [
+          Container(
+            width: double.infinity,
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Colors.white, Color(0xFFE3D7FF)],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+              ),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // Logo Citabot
+                Image.asset(
+                  'assets/images/citabot.png',
+                  width: 120,
+                  height: 120,
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Bienvenido a Citabot',
+                  style: TextStyle(
+                    fontSize: 26,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.deepPurple,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  '¿Qué cita quieres buscar?',
+                  style: TextStyle(fontSize: 18),
+                ),
+                const SizedBox(height: 32),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.deepPurple,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 32,
+                      vertical: 16,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  icon: const Icon(Icons.car_repair, color: Colors.white),
+                  label: const Text(
+                    'Buscar cita ITV',
+                    style: TextStyle(color: Colors.white, fontSize: 18),
+                  ),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => ITVCitaScreen(token: _token),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 16),
+                const SizedBox(height: 32),
+                const Text(
+                  'Tu token FCM es:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  child: SelectableText(
+                    _token ?? 'Obteniendo token...',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 32.0),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.grey[800],
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      icon: const Icon(
+                        Icons.notifications_off,
+                        color: Colors.white,
+                      ),
+                      label: const Text(
+                        'Dejar de recibir notificaciones',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                      onPressed: () async {
+                        final confirmed = await showDialog<bool>(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Text('Confirmar baja'),
+                            content: const Text(
+                              '¿Estás seguro de que quieres dejar de recibir notificaciones?',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () =>
+                                    Navigator.of(context).pop(false),
+                                child: const Text('Cancelar'),
+                              ),
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.red,
+                                ),
+                                onPressed: () =>
+                                    Navigator.of(context).pop(true),
+                                child: const Text('Sí, darme de baja'),
+                              ),
+                            ],
+                          ),
+                        );
+
+                        if (confirmed != true) return;
+                        if (!mounted) return;
+
+                        final scaffold = ScaffoldMessenger.of(context);
+                        scaffold.showSnackBar(
+                          const SnackBar(content: Text('Procesando baja...')),
+                        );
+                        final success =
+                            await UserService.unsubscribeFromNotifications();
+                        if (!mounted) return;
+                        scaffold.hideCurrentSnackBar();
+                        if (success) {
+                          scaffold.showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Te has dado de baja de las notificaciones',
+                              ),
+                            ),
+                          );
+                          setState(() {
+                            _token = null;
+                          });
+                        } else {
+                          scaffold.showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'No se pudo procesar la baja, inténtalo más tarde',
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 32.0),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green[700],
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      icon: const Icon(Icons.refresh, color: Colors.white),
+                      label: const Text(
+                        'Volver a suscribirse',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                      onPressed: () async {
+                        final scaffold = ScaffoldMessenger.of(context);
+                        scaffold.showSnackBar(
+                          const SnackBar(content: Text('Re-suscribiendo...')),
+                        );
+                        await UserService.refreshToken();
+                        if (!mounted) return;
+                        scaffold.hideCurrentSnackBar();
+                        final token = UserService.getCurrentToken();
+                        if (token != null) {
+                          scaffold.showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Te has vuelto a suscribir a las notificaciones',
+                              ),
+                            ),
+                          );
+                          if (!mounted) return;
+                          setState(() {
+                            _token = token;
+                          });
+                        } else {
+                          scaffold.showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'No se pudo re-suscribir, inténtalo más tarde',
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (_isBannerAdReady && _bannerAd != null)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: MediaQuery.of(context).viewPadding.bottom + 4,
+              child: Container(
+                width: _bannerAd!.size.width.toDouble(),
+                height: _bannerAd!.size.height.toDouble(),
+                alignment: Alignment.center,
+                child: AdWidget(ad: _bannerAd!),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class ITVCitaScreen extends StatefulWidget {
+  final String? token;
+  const ITVCitaScreen({super.key, this.token});
+
+  @override
+  State<ITVCitaScreen> createState() => _ITVCitaScreenState();
+}
+
+class _ITVCitaScreenState extends State<ITVCitaScreen> {
+  List<dynamic> estaciones = [];
+  List<Map<String, dynamic>> tiposVehiculo = [];
+  dynamic estacionSeleccionada;
+  dynamic tipoSeleccionado;
+  bool cargandoEstaciones = false;
+  bool cargandoTipos = false;
+  bool servidorInicializando = false;
+  String mensajeCarga = "Cargando estaciones...";
 
   void mostrarErrorServicios(BuildContext context) {
     if (!mounted) return;
@@ -454,7 +710,7 @@ class _MyHomePageState extends State<MyHomePage> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.deepPurple,
-        title: const Text('Citabot'),
+        title: const Text('Buscar Cita ITV'),
         centerTitle: true,
         elevation: 4,
         actions: [
@@ -471,356 +727,145 @@ class _MyHomePageState extends State<MyHomePage> {
           ),
         ],
       ),
-      body: Stack(
-        children: [
-          Container(
-            width: double.infinity,
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Colors.white, Color(0xFFE3D7FF)],
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
+      body: Container(
+        width: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Colors.white, Color(0xFFE3D7FF)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+        ),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Botón para cargar estaciones
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.deepPurple,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                icon: const Icon(Icons.refresh, color: Colors.white),
+                label: Text(
+                  cargandoEstaciones ? mensajeCarga : 'Cargar Estaciones ITV',
+                  style: const TextStyle(color: Colors.white, fontSize: 16),
+                ),
+                onPressed: cargandoEstaciones ? null : cargarEstaciones,
               ),
-            ),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Logo Citabot
-                  Center(
-                    child: Image.asset(
-                      'assets/images/citabot.png',
-                      width: 120,
-                      height: 120,
+
+              const SizedBox(height: 20),
+
+              // Dropdown de estaciones
+              if (estaciones.isNotEmpty) ...[
+                const Text(
+                  'Selecciona una estación:',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey),
+                    borderRadius: BorderRadius.circular(8),
+                    color: Colors.white,
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<dynamic>(
+                      value: estacionSeleccionada,
+                      hint: const Text('Selecciona una estación'),
+                      isExpanded: true,
+                      items: estaciones.map<DropdownMenuItem<dynamic>>((
+                        estacion,
+                      ) {
+                        final nombre =
+                            '${estacion['provincia'] ?? ''} - ${estacion['nombre'] ?? ''} (${estacion['tipo'] ?? ''})';
+                        return DropdownMenuItem<dynamic>(
+                          value: estacion,
+                          child: Text(nombre, overflow: TextOverflow.ellipsis),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        setState(() {
+                          estacionSeleccionada = value;
+                          tipoSeleccionado = null;
+                          tiposVehiculo = [];
+                        });
+                        if (value != null) {
+                          cargarTiposVehiculo();
+                        }
+                      },
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  const Center(
-                    child: Text(
-                      'Bienvenido a Citabot',
-                      style: TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.deepPurple,
-                      ),
-                    ),
+                ),
+                const SizedBox(height: 20),
+              ],
+
+              // Dropdown de tipos de vehículo
+              if (tiposVehiculo.isNotEmpty) ...[
+                const Text(
+                  'Selecciona el tipo de servicio:',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey),
+                    borderRadius: BorderRadius.circular(8),
+                    color: Colors.white,
                   ),
-                  const SizedBox(height: 16),
-                  const Center(
-                    child: Text(
-                      '¿Qué cita quieres buscar?',
-                      style: TextStyle(fontSize: 18),
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-
-                  // Botón para cargar estaciones
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.deepPurple,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    icon: const Icon(Icons.refresh, color: Colors.white),
-                    label: Text(
-                      cargandoEstaciones
-                          ? mensajeCarga
-                          : 'Cargar Estaciones ITV',
-                      style: const TextStyle(color: Colors.white, fontSize: 16),
-                    ),
-                    onPressed: cargandoEstaciones ? null : cargarEstaciones,
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // Dropdown de estaciones
-                  if (estaciones.isNotEmpty) ...[
-                    const Text(
-                      'Selecciona una estación:',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey),
-                        borderRadius: BorderRadius.circular(8),
-                        color: Colors.white,
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<dynamic>(
-                          value: estacionSeleccionada,
-                          hint: const Text('Selecciona una estación'),
-                          isExpanded: true,
-                          items: estaciones.map<DropdownMenuItem<dynamic>>((
-                            estacion,
-                          ) {
-                            final nombre =
-                                '${estacion['provincia'] ?? ''} - ${estacion['nombre'] ?? ''} (${estacion['tipo'] ?? ''})';
-                            return DropdownMenuItem<dynamic>(
-                              value: estacion,
-                              child: Text(
-                                nombre,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            );
-                          }).toList(),
-                          onChanged: (value) {
-                            setState(() {
-                              estacionSeleccionada = value;
-                              tipoSeleccionado = null;
-                              tiposVehiculo = [];
-                            });
-                            if (value != null) {
-                              cargarTiposVehiculo();
-                            }
-                          },
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                  ],
-
-                  // Dropdown de tipos de vehículo
-                  if (tiposVehiculo.isNotEmpty) ...[
-                    const Text(
-                      'Selecciona el tipo de servicio:',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey),
-                        borderRadius: BorderRadius.circular(8),
-                        color: Colors.white,
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<dynamic>(
-                          value: tipoSeleccionado,
-                          hint: const Text('Selecciona un servicio'),
-                          isExpanded: true,
-                          items: tiposVehiculo.map<DropdownMenuItem<dynamic>>((
-                            tipo,
-                          ) {
-                            return DropdownMenuItem<dynamic>(
-                              value: tipo,
-                              child: Text(
-                                tipo['nombre'] ?? '',
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            );
-                          }).toList(),
-                          onChanged: (value) {
-                            setState(() {
-                              tipoSeleccionado = value;
-                            });
-                          },
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                  ],
-
-                  // Botón de buscar fechas
-                  if (estacionSeleccionada != null && tipoSeleccionado != null)
-                    ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      icon: const Icon(Icons.search, color: Colors.white),
-                      label: const Text(
-                        'Buscar Fechas Disponibles',
-                        style: TextStyle(color: Colors.white, fontSize: 16),
-                      ),
-                      onPressed: buscarFechas,
-                    ),
-
-                  const SizedBox(height: 32),
-
-                  // Sección del token FCM
-                  const Center(
-                    child: Text(
-                      'Tu token FCM es:',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[100],
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.grey[300]!),
-                    ),
-                    child: SelectableText(
-                      _token ?? 'Obteniendo token...',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // Botones de notificaciones
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.grey[800],
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      icon: const Icon(
-                        Icons.notifications_off,
-                        color: Colors.white,
-                      ),
-                      label: const Text(
-                        'Dejar de recibir notificaciones',
-                        style: TextStyle(color: Colors.white),
-                      ),
-                      onPressed: () async {
-                        final confirmed = await showDialog<bool>(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            title: const Text('Confirmar baja'),
-                            content: const Text(
-                              '¿Estás seguro de que quieres dejar de recibir notificaciones?',
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () =>
-                                    Navigator.of(context).pop(false),
-                                child: const Text('Cancelar'),
-                              ),
-                              ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.red,
-                                ),
-                                onPressed: () =>
-                                    Navigator.of(context).pop(true),
-                                child: const Text('Sí, darme de baja'),
-                              ),
-                            ],
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<dynamic>(
+                      value: tipoSeleccionado,
+                      hint: const Text('Selecciona un servicio'),
+                      isExpanded: true,
+                      items: tiposVehiculo.map<DropdownMenuItem<dynamic>>((
+                        tipo,
+                      ) {
+                        return DropdownMenuItem<dynamic>(
+                          value: tipo,
+                          child: Text(
+                            tipo['nombre'] ?? '',
+                            overflow: TextOverflow.ellipsis,
                           ),
                         );
-
-                        if (confirmed != true) return;
-                        if (!mounted) return;
-
-                        final scaffold = ScaffoldMessenger.of(context);
-                        scaffold.showSnackBar(
-                          const SnackBar(content: Text('Procesando baja...')),
-                        );
-                        final success =
-                            await UserService.unsubscribeFromNotifications();
-                        if (!mounted) return;
-                        scaffold.hideCurrentSnackBar();
-                        if (success) {
-                          scaffold.showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                'Te has dado de baja de las notificaciones',
-                              ),
-                            ),
-                          );
-                          setState(() {
-                            _token = null;
-                          });
-                        } else {
-                          scaffold.showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                'No se pudo procesar la baja, inténtalo más tarde',
-                              ),
-                            ),
-                          );
-                        }
+                      }).toList(),
+                      onChanged: (value) {
+                        setState(() {
+                          tipoSeleccionado = value;
+                        });
                       },
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green[700],
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      icon: const Icon(Icons.refresh, color: Colors.white),
-                      label: const Text(
-                        'Volver a suscribirse',
-                        style: TextStyle(color: Colors.white),
-                      ),
-                      onPressed: () async {
-                        final scaffold = ScaffoldMessenger.of(context);
-                        scaffold.showSnackBar(
-                          const SnackBar(content: Text('Re-suscribiendo...')),
-                        );
-                        await UserService.refreshToken();
-                        if (!mounted) return;
-                        scaffold.hideCurrentSnackBar();
-                        final token = UserService.getCurrentToken();
-                        if (token != null) {
-                          scaffold.showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                'Te has vuelto a suscribir a las notificaciones',
-                              ),
-                            ),
-                          );
-                          if (!mounted) return;
-                          setState(() {
-                            _token = token;
-                          });
-                        } else {
-                          scaffold.showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                'No se pudo re-suscribir, inténtalo más tarde',
-                              ),
-                            ),
-                          );
-                        }
-                      },
+                ),
+                const SizedBox(height: 20),
+              ],
+
+              // Botón de buscar fechas
+              if (estacionSeleccionada != null && tipoSeleccionado != null)
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  const SizedBox(height: 80), // Espacio para el banner
-                ],
-              ),
-            ),
+                  icon: const Icon(Icons.search, color: Colors.white),
+                  label: const Text(
+                    'Buscar Fechas Disponibles',
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                  onPressed: buscarFechas,
+                ),
+            ],
           ),
-          // Banner publicitario
-          if (_isBannerAdReady && _bannerAd != null)
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: MediaQuery.of(context).viewPadding.bottom + 4,
-              child: Container(
-                width: _bannerAd!.size.width.toDouble(),
-                height: _bannerAd!.size.height.toDouble(),
-                alignment: Alignment.center,
-                child: AdWidget(ad: _bannerAd!),
-              ),
-            ),
-        ],
+        ),
       ),
     );
   }
