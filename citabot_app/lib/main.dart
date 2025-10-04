@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:http/http.dart' as http;
 import 'package:google_mobile_ads/google_mobile_ads.dart';
@@ -15,12 +16,34 @@ import 'services/user_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
-  // Inicializar servicio unificado de usuario (notificaciones + tracking)
-  await UserService.initialize();
-  // Inicializa AdMob
-  await MobileAds.instance.initialize();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
+  // Start non-blocking initialization tasks after showing UI
+  // to avoid delaying app startup. UserService.initialize may do
+  // network/auth work and MobileAds initialization may be slow.
+  // We still await Firebase because some Firebase APIs may require it.
   runApp(const MyApp());
+
+  // Initialize other services asynchronously without blocking UI
+  // Fire-and-forget initializations with error handling
+  () async {
+    try {
+      await UserService.initialize();
+    } catch (e) {
+      debugPrint('Error initializing UserService in background: $e');
+    }
+  }();
+
+  () async {
+    try {
+      await MobileAds.instance.initialize();
+    } catch (e) {
+      debugPrint('Error initializing MobileAds in background: $e');
+    }
+  }();
+
 }
 
 class MyApp extends StatelessWidget {
@@ -29,11 +52,20 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'Citabot App',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.deepPurple,
+          // Ensure icons (back arrow, favorites, action icons) are white
+          iconTheme: IconThemeData(color: Colors.white),
+          // Ensure title text is white across all AppBars
+          titleTextStyle: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w500),
+          toolbarTextStyle: TextStyle(color: Colors.white, fontSize: 18),
+          centerTitle: true,
+        ),
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: const MyHomePage(title: 'Citabot Home Page'),
     );
   }
 }
@@ -90,9 +122,7 @@ class _MyHomePageState extends State<MyHomePage> {
     )..load();
     // Inicializar FCM token
     _getTokenAndSend();
-    // El tracking ya se hace automáticamente en UserService.initialize()
-    // Get user ID for display
-    _getUserId();
+  // El tracking ya se hace automáticamente en UserService.initialize()
   }
 
   @override
@@ -334,7 +364,6 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   String? _token;
-  String? _userId;
 
   Future<void> _getTokenAndSend() async {
     final token = await FirebaseMessaging.instance.getToken();
@@ -350,10 +379,29 @@ class _MyHomePageState extends State<MyHomePage> {
   Future<void> sendTokenToBackend(String token) async {
     final url = Uri.parse(Config.registerTokenUrl);
     try {
+      // Wait a short time for UserService to create a user_id (if running in background)
+      String? userId;
+      const int maxRetries = 6; // ~3 seconds
+      for (int i = 0; i < maxRetries; i++) {
+        userId = UserService.getUserId();
+        if (userId != null) break;
+        await Future.delayed(Duration(milliseconds: 500));
+      }
+
+      // Include favoritos if available
+      final prefs = await SharedPreferences.getInstance();
+      List<String> favoritos = prefs.getStringList('favoritos') ?? [];
+
+      final bodyMap = {
+        'token': token,
+        if (userId != null) 'user_id': userId,
+        if (favoritos.isNotEmpty) 'favoritos': favoritos,
+      };
+
       final response = await http.post(
         url,
         headers: {"Content-Type": "application/json"},
-        body: '{"token": "$token"}',
+        body: jsonEncode(bodyMap),
       );
       if (response.statusCode == 200) {
         debugPrint("Token enviado correctamente al backend");
@@ -365,16 +413,7 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
-  Future<void> _getUserId() async {
-    try {
-      final userId = UserService.getUserId();
-      setState(() {
-        _userId = userId;
-      });
-    } catch (e) {
-      debugPrint("Error getting user ID: $e");
-    }
-  }
+  // User ID tracking removed
 
   @override
   Widget build(BuildContext context) {
@@ -460,23 +499,107 @@ class _MyHomePageState extends State<MyHomePage> {
                     style: const TextStyle(fontSize: 12),
                   ),
                 ),
-                const SizedBox(height: 16),
-                const Text(
-                  'Tu User ID (para soporte):',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
+                const SizedBox(height: 12),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: SelectableText(
-                    _userId ?? 'Obteniendo ID...',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Colors.deepPurple,
+                  padding: const EdgeInsets.symmetric(horizontal: 32.0),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.grey[800],
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      icon: const Icon(Icons.notifications_off, color: Colors.white),
+                      label: const Text('Dejar de recibir notificaciones', style: TextStyle(color: Colors.white)),
+                      onPressed: () async {
+                        // Confirmación antes de dar de baja
+                        final confirmed = await showDialog<bool>(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Text('Confirmar baja'),
+                            content: const Text('¿Estás seguro de que quieres dejar de recibir notificaciones?'),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.of(context).pop(false),
+                                child: const Text('Cancelar'),
+                              ),
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                                onPressed: () => Navigator.of(context).pop(true),
+                                child: const Text('Sí, darme de baja'),
+                              ),
+                            ],
+                          ),
+                        );
+
+                        if (confirmed != true) return;
+
+                        // Widget might have been disposed while waiting for the dialog.
+                        if (!mounted) return;
+
+                        final scaffold = ScaffoldMessenger.of(context);
+                        scaffold.showSnackBar(const SnackBar(content: Text('Procesando baja...')));
+                        final success = await UserService.unsubscribeFromNotifications();
+                        if (!mounted) return;
+                        scaffold.hideCurrentSnackBar();
+                        if (success) {
+                          scaffold.showSnackBar(const SnackBar(content: Text('Te has dado de baja de las notificaciones')));
+                          setState(() {
+                            _token = null;
+                          });
+                        } else {
+                          scaffold.showSnackBar(const SnackBar(content: Text('No se pudo procesar la baja, inténtalo más tarde')));
+                        }
+                      },
                     ),
                   ),
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 32.0),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green[700],
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      icon: const Icon(Icons.refresh, color: Colors.white),
+                      label: const Text('Volver a suscribirse', style: TextStyle(color: Colors.white)),
+                      onPressed: () async {
+                        final scaffold = ScaffoldMessenger.of(context);
+                        scaffold.showSnackBar(const SnackBar(content: Text('Re-suscribiendo...')));
+                        await UserService.refreshToken();
+                        if (!mounted) return;
+                        scaffold.hideCurrentSnackBar();
+                        // Re-fetch token for display
+                        final token = UserService.getCurrentToken();
+                        if (token != null) {
+                          scaffold.showSnackBar(const SnackBar(content: Text('Te has vuelto a suscribir a las notificaciones')));
+                          if (!mounted) return;
+                          setState(() {
+                            _token = token;
+                          });
+                        } else {
+                          scaffold.showSnackBar(const SnackBar(content: Text('No se pudo re-suscribir, inténtalo más tarde')));
+                        }
+                      },
+                    ),
+                  ),
+                ),
+                // User ID display removed (was used for testers tracking)
                 // El banner se elimina de aquí
               ],
             ),
@@ -485,7 +608,8 @@ class _MyHomePageState extends State<MyHomePage> {
             Positioned(
               left: 0,
               right: 0,
-              bottom: 24, // margen para no tapar la barra del sistema
+              // place the banner just above the system/navigation bar using safe-area inset
+              bottom: MediaQuery.of(context).viewPadding.bottom + 4,
               child: Container(
                 width: _bannerAd!.size.width.toDouble(),
                 height: _bannerAd!.size.height.toDouble(),
@@ -1079,9 +1203,10 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Logo ITV grande y centrado
+                // Logo ITV grande y centrado (ajustado para subirlo hacia arriba)
                 Padding(
-                  padding: const EdgeInsets.only(top: 24.0, bottom: 16.0),
+                  // menos espacio debajo para que el logo quede más arriba respecto al dropdown
+                  padding: const EdgeInsets.only(top: 12.0, bottom: 2.0),
                   child: Center(
                     child: Image.asset(
                       'assets/images/logoITV.png',
@@ -1290,7 +1415,8 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
             Positioned(
               left: 0,
               right: 0,
-              bottom: 24, // margen para no tapar la barra del sistema
+              // place the banner just above the system/navigation bar using safe-area inset
+              bottom: MediaQuery.of(context).viewPadding.bottom + 4,
               child: Container(
                 width: _bannerAd!.size.width.toDouble(),
                 height: _bannerAd!.size.height.toDouble(),
