@@ -192,19 +192,41 @@ def detect_new_appointments_for_users(old_data, new_data, store, service):
             
             print(f"User {user['user_id']} has {len(user_new_appointments)} new appointments")
             
-            # Create notification data for this user
+            # Find the EARLIEST new appointment for this user
+            earliest_appointment = None
+            earliest_datetime = None
+            
             for item in new_data:
                 if isinstance(item, dict) and 'fecha' in item and 'hora' in item:
                     appointment_id = f"{item['fecha']}_{item['hora']}"
                     if appointment_id in user_new_appointments:
-                        notifications_to_send.append({
-                            'token': user['token'],
-                            'user_id': user['user_id'],
-                            'store_id': int(store),
-                            'estacion_nombre': estacion_nombre,
-                            'fecha': item['fecha'],
-                            'hora': item['hora']
-                        })
+                        try:
+                            # Parse date and time to find the earliest
+                            fecha_str = item['fecha']
+                            hora_str = item['hora']
+                            datetime_str = f"{fecha_str} {hora_str}"
+                            
+                            from datetime import datetime
+                            appointment_datetime = datetime.strptime(datetime_str, '%Y-%m-%d %H:%M')
+                            
+                            if earliest_datetime is None or appointment_datetime < earliest_datetime:
+                                earliest_datetime = appointment_datetime
+                                earliest_appointment = {
+                                    'token': user['token'],
+                                    'user_id': user['user_id'],
+                                    'store_id': int(store),
+                                    'estacion_nombre': estacion_nombre,
+                                    'fecha': item['fecha'],
+                                    'hora': item['hora']
+                                }
+                        except Exception as e:
+                            print(f"Error parsing appointment datetime: {e}")
+                            continue
+            
+            # Only add the EARLIEST appointment for notification
+            if earliest_appointment:
+                print(f"Earliest new appointment for user {user['user_id']}: {earliest_appointment['fecha']} {earliest_appointment['hora']}")
+                notifications_to_send.append(earliest_appointment)
         
         # Update user's last seen appointments
         from notifier import update_user_last_seen_appointments
@@ -223,9 +245,9 @@ def set_cached_slots(store, service, data):
         # Update cache
         slots_cache[key] = {'data': data, 'timestamp': time.time()}
         
-        # Send personalized notifications
+        # Send personalized notifications (only earliest appointment per user)
         if user_notifications:
-            print(f"Sending {len(user_notifications)} personalized notifications")
+            print(f"Sending {len(user_notifications)} personalized notifications (earliest appointments only)")
             for notification in user_notifications:
                 send_new_appointment_notification(
                     notification['estacion_nombre'],
@@ -686,6 +708,39 @@ async def clear_user_history(request: Request):
         
     except Exception as e:
         print(f"Error clearing user history: {e}")
+        return JSONResponse({"error": "Failed to clear user history"}, status_code=500)
+
+# Endpoint para limpiar historial de un usuario por user_id
+@app.post("/notifications/clear-history-by-user")
+async def clear_history_by_user(request: Request):
+    """Clear appointment history for a specific user_id"""
+    try:
+        data = await request.json()
+        user_id = data.get("user_id")
+        
+        if not user_id:
+            return JSONResponse({"error": "user_id is required"}, status_code=400)
+        
+        from notifier import registered_tokens, save_tokens_data
+        
+        cleared_count = 0
+        for token, token_data in registered_tokens.items():
+            if token_data.get("user_id") == user_id:
+                keys_to_remove = [key for key in token_data.keys() if key.startswith("last_seen_")]
+                for key in keys_to_remove:
+                    del token_data[key]
+                cleared_count += len(keys_to_remove)
+        
+        if cleared_count > 0:
+            save_tokens_data()
+        
+        return {
+            "message": f"Cleared {cleared_count} appointment history entries for user_id {user_id}",
+            "cleared_entries": cleared_count
+        }
+        
+    except Exception as e:
+        print(f"Error clearing user history by user_id: {e}")
         return JSONResponse({"error": "Failed to clear user history"}, status_code=500)
 
 

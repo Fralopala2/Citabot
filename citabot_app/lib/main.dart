@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -70,6 +71,20 @@ Future<void> _showLocalNotification(RemoteMessage message) async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Configurar edge-to-edge display
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+
+  // Configurar colores transparentes para las barras del sistema
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarIconBrightness: Brightness.dark,
+    ),
+  );
+
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
@@ -462,6 +477,8 @@ class ITVCitaScreen extends StatefulWidget {
 }
 
 class _ITVCitaScreenState extends State<ITVCitaScreen> {
+  BannerAd? _bannerAd;
+  bool _isBannerAdReady = false;
   List<dynamic> estaciones = [];
   List<Map<String, dynamic>> tiposVehiculo = [];
   dynamic estacionSeleccionada;
@@ -470,6 +487,33 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
   bool cargandoTipos = false;
   bool servidorInicializando = false;
   String mensajeCarga = "Cargando estaciones...";
+
+  @override
+  void initState() {
+    super.initState();
+    _bannerAd = BannerAd(
+      adUnitId: 'ca-app-pub-9610124391381160/2707419077',
+      size: AdSize.banner,
+      request: const AdRequest(),
+      listener: BannerAdListener(
+        onAdLoaded: (_) {
+          setState(() {
+            _isBannerAdReady = true;
+          });
+        },
+        onAdFailedToLoad: (ad, error) {
+          ad.dispose();
+          debugPrint('Error al cargar banner: ${error.message}');
+        },
+      ),
+    )..load();
+  }
+
+  @override
+  void dispose() {
+    _bannerAd?.dispose();
+    super.dispose();
+  }
 
   void mostrarErrorServicios(BuildContext context) {
     if (!mounted) return;
@@ -796,145 +840,191 @@ class _ITVCitaScreenState extends State<ITVCitaScreen> {
           ),
         ],
       ),
-      body: Container(
-        width: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Colors.white, Color(0xFFE3D7FF)],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
-        ),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Botón para cargar estaciones
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.deepPurple,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                icon: const Icon(Icons.refresh, color: Colors.white),
-                label: Text(
-                  cargandoEstaciones ? mensajeCarga : 'Cargar Estaciones ITV',
-                  style: const TextStyle(color: Colors.white, fontSize: 16),
-                ),
-                onPressed: cargandoEstaciones ? null : cargarEstaciones,
+      body: Stack(
+        children: [
+          Container(
+            width: double.infinity,
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Colors.white, Color(0xFFE3D7FF)],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
               ),
-
-              const SizedBox(height: 20),
-
-              // Dropdown de estaciones
-              if (estaciones.isNotEmpty) ...[
-                const Text(
-                  'Selecciona una estación:',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.grey),
-                    borderRadius: BorderRadius.circular(8),
-                    color: Colors.white,
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<dynamic>(
-                      value: estacionSeleccionada,
-                      hint: const Text('Selecciona una estación'),
-                      isExpanded: true,
-                      items: estaciones.map<DropdownMenuItem<dynamic>>((
-                        estacion,
-                      ) {
-                        final nombre =
-                            '${estacion['provincia'] ?? ''} - ${estacion['nombre'] ?? ''} (${estacion['tipo'] ?? ''})';
-                        return DropdownMenuItem<dynamic>(
-                          value: estacion,
-                          child: Text(nombre, overflow: TextOverflow.ellipsis),
-                        );
-                      }).toList(),
-                      onChanged: (value) {
-                        setState(() {
-                          estacionSeleccionada = value;
-                          tipoSeleccionado = null;
-                          tiposVehiculo = [];
-                        });
-                        if (value != null) {
-                          cargarTiposVehiculo();
-                        }
-                      },
+            ),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Logo ITV grande y centrado
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8.0, bottom: 24.0),
+                    child: Center(
+                      child: Image.asset(
+                        'assets/images/logoITV.png',
+                        width: 300,
+                        height: 170,
+                        fit: BoxFit.contain,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 20),
-              ],
 
-              // Dropdown de tipos de vehículo
-              if (tiposVehiculo.isNotEmpty) ...[
-                const Text(
-                  'Selecciona el tipo de servicio:',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.grey),
-                    borderRadius: BorderRadius.circular(8),
-                    color: Colors.white,
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<dynamic>(
-                      value: tipoSeleccionado,
-                      hint: const Text('Selecciona un servicio'),
-                      isExpanded: true,
-                      items: tiposVehiculo.map<DropdownMenuItem<dynamic>>((
-                        tipo,
-                      ) {
-                        return DropdownMenuItem<dynamic>(
-                          value: tipo,
-                          child: Text(
-                            tipo['nombre'] ?? '',
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        );
-                      }).toList(),
-                      onChanged: (value) {
-                        setState(() {
-                          tipoSeleccionado = value;
-                        });
-                      },
+                  // Botón para cargar estaciones
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: cargandoEstaciones
+                          ? Colors.grey[600]
+                          : Colors.deepPurple,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
+                    icon: const Icon(Icons.refresh, color: Colors.white),
+                    label: Text(
+                      cargandoEstaciones
+                          ? mensajeCarga
+                          : 'Cargar Estaciones ITV',
+                      style: const TextStyle(color: Colors.white, fontSize: 16),
+                    ),
+                    onPressed: cargandoEstaciones ? null : cargarEstaciones,
                   ),
-                ),
-                const SizedBox(height: 20),
-              ],
 
-              // Botón de buscar fechas
-              if (estacionSeleccionada != null && tipoSeleccionado != null)
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                  const SizedBox(height: 20),
+
+                  // Dropdown de estaciones
+                  if (estaciones.isNotEmpty) ...[
+                    const Text(
+                      'Selecciona una estación:',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                  ),
-                  icon: const Icon(Icons.search, color: Colors.white),
-                  label: const Text(
-                    'Buscar Fechas Disponibles',
-                    style: TextStyle(color: Colors.white, fontSize: 16),
-                  ),
-                  onPressed: buscarFechas,
-                ),
-            ],
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey),
+                        borderRadius: BorderRadius.circular(8),
+                        color: Colors.white,
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<dynamic>(
+                          value: estacionSeleccionada,
+                          hint: const Text('Selecciona una estación'),
+                          isExpanded: true,
+                          items: estaciones.map<DropdownMenuItem<dynamic>>((
+                            estacion,
+                          ) {
+                            final nombre =
+                                '${estacion['provincia'] ?? ''} - ${estacion['nombre'] ?? ''} (${estacion['tipo'] ?? ''})';
+                            return DropdownMenuItem<dynamic>(
+                              value: estacion,
+                              child: Text(
+                                nombre,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            );
+                          }).toList(),
+                          onChanged: (value) {
+                            setState(() {
+                              estacionSeleccionada = value;
+                              tipoSeleccionado = null;
+                              tiposVehiculo = [];
+                            });
+                            if (value != null) {
+                              cargarTiposVehiculo();
+                            }
+                          },
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+
+                  // Dropdown de tipos de vehículo
+                  if (tiposVehiculo.isNotEmpty) ...[
+                    const Text(
+                      'Selecciona el tipo de servicio:',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey),
+                        borderRadius: BorderRadius.circular(8),
+                        color: Colors.white,
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<dynamic>(
+                          value: tipoSeleccionado,
+                          hint: const Text('Selecciona un servicio'),
+                          isExpanded: true,
+                          items: tiposVehiculo.map<DropdownMenuItem<dynamic>>((
+                            tipo,
+                          ) {
+                            return DropdownMenuItem<dynamic>(
+                              value: tipo,
+                              child: Text(
+                                tipo['nombre'] ?? '',
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            );
+                          }).toList(),
+                          onChanged: (value) {
+                            setState(() {
+                              tipoSeleccionado = value;
+                            });
+                          },
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+
+                  // Botón de buscar fechas
+                  if (estacionSeleccionada != null && tipoSeleccionado != null)
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      icon: const Icon(Icons.search, color: Colors.white),
+                      label: const Text(
+                        'Buscar Fechas Disponibles',
+                        style: TextStyle(color: Colors.white, fontSize: 16),
+                      ),
+                      onPressed: buscarFechas,
+                    ),
+                  const SizedBox(height: 80), // Espacio para el banner
+                ],
+              ),
+            ),
           ),
-        ),
+          // Banner publicitario
+          if (_isBannerAdReady && _bannerAd != null)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: MediaQuery.of(context).viewPadding.bottom + 4,
+              child: Container(
+                width: _bannerAd!.size.width.toDouble(),
+                height: _bannerAd!.size.height.toDouble(),
+                alignment: Alignment.center,
+                child: AdWidget(ad: _bannerAd!),
+              ),
+            ),
+        ],
       ),
     );
   }
