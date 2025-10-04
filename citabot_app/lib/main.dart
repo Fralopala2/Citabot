@@ -275,41 +275,146 @@ class _MyHomePageState extends State<MyHomePage> {
                 style: const TextStyle(fontSize: 12),
               ),
             ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.orange,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 12,
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32.0),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.grey[800],
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  icon: const Icon(
+                    Icons.notifications_off,
+                    color: Colors.white,
+                  ),
+                  label: const Text(
+                    'Dejar de recibir notificaciones',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  onPressed: () async {
+                    // Confirmación antes de dar de baja
+                    final confirmed = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('Confirmar baja'),
+                        content: const Text(
+                          '¿Estás seguro de que quieres dejar de recibir notificaciones?',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(false),
+                            child: const Text('Cancelar'),
+                          ),
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.red,
+                            ),
+                            onPressed: () => Navigator.of(context).pop(true),
+                            child: const Text('Sí, darme de baja'),
+                          ),
+                        ],
+                      ),
+                    );
+
+                    if (confirmed != true) return;
+
+                    // Widget might have been disposed while waiting for the dialog.
+                    if (!mounted) return;
+
+                    final scaffold = ScaffoldMessenger.of(context);
+                    scaffold.showSnackBar(
+                      const SnackBar(content: Text('Procesando baja...')),
+                    );
+                    final success =
+                        await UserService.unsubscribeFromNotifications();
+                    if (!mounted) return;
+                    scaffold.hideCurrentSnackBar();
+                    if (success) {
+                      scaffold.showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Te has dado de baja de las notificaciones',
+                          ),
+                        ),
+                      );
+                      setState(() {
+                        _token = null;
+                      });
+                    } else {
+                      scaffold.showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'No se pudo procesar la baja, inténtalo más tarde',
+                          ),
+                        ),
+                      );
+                    }
+                  },
                 ),
               ),
-              onPressed: () async {
-                if (_token != null) {
-                  final url = Uri.parse('${Config.baseUrl}/notifications/test');
-                  try {
-                    final response = await http.post(
-                      url,
-                      headers: {"Content-Type": "application/json"},
-                      body: jsonEncode({"token": _token}),
+            ),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32.0),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green[700],
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  icon: const Icon(Icons.refresh, color: Colors.white),
+                  label: const Text(
+                    'Volver a suscribirse',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  onPressed: () async {
+                    final scaffold = ScaffoldMessenger.of(context);
+                    scaffold.showSnackBar(
+                      const SnackBar(content: Text('Re-suscribiendo...')),
                     );
-                    if (response.statusCode == 200) {
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Notificación de prueba enviada'),
+                    await UserService.refreshToken();
+                    if (!mounted) return;
+                    scaffold.hideCurrentSnackBar();
+                    // Re-fetch token for display
+                    final token = UserService.getCurrentToken();
+                    if (token != null) {
+                      scaffold.showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Te has vuelto a suscribir a las notificaciones',
                           ),
-                        );
-                      }
+                        ),
+                      );
+                      if (!mounted) return;
+                      setState(() {
+                        _token = token;
+                      });
+                    } else {
+                      scaffold.showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'No se pudo re-suscribir, inténtalo más tarde',
+                          ),
+                        ),
+                      );
                     }
-                  } catch (e) {
-                    debugPrint("Error enviando notificación de prueba: $e");
-                  }
-                }
-              },
-              child: const Text(
-                'Probar Notificación',
-                style: TextStyle(color: Colors.white),
+                  },
+                ),
               ),
             ),
           ],
