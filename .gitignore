@@ -49,8 +49,7 @@ citabot_app/windows/build/
 *.iml
 
 # Documentation and internal files
-TRACKING_INSTALACIONES.md
-FIREBASE_SETUP.md
+# Historical docs removed: TRACKING_INSTALACIONES.md and FIREBASE_SETUP.md were removed
 TODO.md
 NOTES.md
 DEVELOPMENT.md
@@ -65,6 +64,10 @@ citabot_app/android/app/google-services.json
 citabot-backend/firebase-service-account.json
 firebase-service-account.json
 google-services.json
+citabot_app/lib/services/firebase_options.dart
+citabot_app/lib/firebase_options.dart
+**/google-services-info.plist
+**/google-services.json
 
 # Environment files with sensitive data
 .env
@@ -100,8 +103,6 @@ start_*.bat
 **/*temp*
 
 # Persistent data files (contain user data)
-testers_data.json
-**/testers_data.json
 
 # Test files (no subir tests al repo)
 test_*.py
