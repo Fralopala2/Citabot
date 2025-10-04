@@ -4,7 +4,7 @@ import time
 import os
 from fastapi import FastAPI, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from notifier import register_device_token, send_new_appointment_notification, get_registered_tokens_count, is_firebase_enabled, update_user_favorites
 from scraper_sitval import SitValScraper
 
@@ -252,10 +252,10 @@ async def register_token_endpoint(request: Request):
         user_id = data.get("user_id")
         favoritos = data.get("favoritos")  # Debe ser lista de estaciones favoritas
         if not token:
-            return {"error": "Token is required"}, 400
+            return JSONResponse({"error": "Token is required"}, status_code=400)
         # Validar favoritos como lista
         if favoritos is not None and not isinstance(favoritos, list):
-            return {"error": "Favoritos debe ser una lista"}, 400
+            return JSONResponse({"error": "Favoritos debe ser una lista"}, status_code=400)
         success = register_device_token(token, user_id=user_id, favoritos=favoritos)
         if success:
             return {
@@ -264,10 +264,10 @@ async def register_token_endpoint(request: Request):
                 "registered_devices": get_registered_tokens_count()
             }
         else:
-            return {"error": "Invalid token format"}, 400
+            return JSONResponse({"error": "Invalid token format"}, status_code=400)
     except Exception as e:
         print(f"Error registering token: {e}")
-        return {"error": "Failed to register token"}, 500
+        return JSONResponse({"error": "Failed to register token"}, status_code=500)
 
 # Endpoint para actualizar favoritos de un token
 @app.post("/update-favorites")
@@ -279,17 +279,17 @@ async def update_favorites_endpoint(request: Request):
         favoritos = data.get("favoritos", [])
         
         if not token:
-            return {"error": "Token is required"}, 400
+            return JSONResponse({"error": "Token is required"}, status_code=400)
         
         # Validar favoritos como lista de enteros
         if not isinstance(favoritos, list):
-            return {"error": "Favoritos debe ser una lista"}, 400
+            return JSONResponse({"error": "Favoritos debe ser una lista"}, status_code=400)
         
         # Convertir a enteros si vienen como strings
         try:
             favoritos = [int(f) for f in favoritos]
         except (ValueError, TypeError):
-            return {"error": "Favoritos debe contener solo números de estación"}, 400
+            return JSONResponse({"error": "Favoritos debe contener solo números de estación"}, status_code=400)
         
         success = register_device_token(token, favoritos=favoritos)
         if success:
@@ -300,11 +300,11 @@ async def update_favorites_endpoint(request: Request):
                 "favoritos": favoritos
             }
         else:
-            return {"error": "Token not found"}, 404
+            return JSONResponse({"error": "Token not found"}, status_code=404)
             
     except Exception as e:
         print(f"Error updating favorites: {e}")
-        return {"error": "Failed to update favorites"}, 500
+        return JSONResponse({"error": "Failed to update favorites"}, status_code=500)
 
 @app.delete("/unregister-token")
 async def unregister_token_endpoint(request: Request):
@@ -314,7 +314,7 @@ async def unregister_token_endpoint(request: Request):
         token = data.get("token")
         
         if not token:
-            return {"error": "Token is required"}, 400
+            return JSONResponse({"error": "Token is required"}, status_code=400)
         
         # Remove the token
         from notifier import unregister_device_token
@@ -335,7 +335,7 @@ async def unregister_token_endpoint(request: Request):
             
     except Exception as e:
         print(f"Error unregistering token: {e}")
-        return {"error": "Failed to unregister token"}, 500
+        return JSONResponse({"error": "Failed to unregister token"}, status_code=500)
 
 @app.delete("/clear-all-tokens")
 def clear_all_tokens_endpoint():
@@ -411,10 +411,10 @@ async def update_favorites_endpoint(request: Request):
         favoritos = data.get("favoritos")
         
         if not token:
-            return {"error": "Token is required"}, 400
+            return JSONResponse({"error": "Token is required"}, status_code=400)
             
         if favoritos is not None and not isinstance(favoritos, list):
-            return {"error": "Favoritos debe ser una lista"}, 400
+            return JSONResponse({"error": "Favoritos debe ser una lista"}, status_code=400)
         
         success = update_user_favorites(token, favoritos)
         if success:
@@ -423,11 +423,11 @@ async def update_favorites_endpoint(request: Request):
                 "message": "Favorites updated successfully"
             }
         else:
-            return {"error": "Token not found"}, 404
+            return JSONResponse({"error": "Token not found"}, status_code=404)
             
     except Exception as e:
         print(f"Error updating favorites: {e}")
-        return {"error": "Failed to update favorites"}, 500
+        return JSONResponse({"error": "Failed to update favorites"}, status_code=500)
 
 # Endpoint para estadísticas de notificaciones
 @app.get("/notifications/stats")
@@ -451,7 +451,7 @@ async def test_notification(request: Request):
         token = data.get("token")
         
         if not token:
-            return {"error": "Token is required"}, 400
+            return JSONResponse({"error": "Token is required"}, status_code=400)
         
         # Send test notification
         success = send_new_appointment_notification(
@@ -467,11 +467,11 @@ async def test_notification(request: Request):
                 "message": "Test notification sent successfully"
             }
         else:
-            return {"error": "Failed to send notification"}, 500
+            return JSONResponse({"error": "Failed to send notification"}, status_code=500)
             
     except Exception as e:
         print(f"Error sending test notification: {e}")
-        return {"error": "Failed to send test notification"}, 500
+        return JSONResponse({"error": "Failed to send test notification"}, status_code=500)
 
 
 
