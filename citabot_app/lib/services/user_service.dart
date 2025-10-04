@@ -160,29 +160,51 @@ class UserService {
     String token, {
     List<String>? favoritos,
   }) async {
-    try {
-      final body = {
-        'token': token,
-        if (_userId != null) 'user_id': _userId,
-        if (favoritos != null) 'favoritos': favoritos,
-      };
+    const int maxRetries = 3;
+    int attempt = 0;
+    final body = {
+      'token': token,
+      if (_userId != null) 'user_id': _userId,
+      if (favoritos != null) 'favoritos': favoritos,
+    };
 
-      final response = await http.post(
-        Uri.parse(Config.registerTokenUrl),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(body),
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        debugPrint(
-          '✅ Token registered. Devices: ${data['registered_devices']}',
+    while (attempt < maxRetries) {
+      attempt++;
+      try {
+        final response = await http.post(
+          Uri.parse(Config.registerTokenUrl),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode(body),
         );
-      } else {
-        debugPrint('❌ Error registering token: ${response.statusCode}');
+
+        if (response.statusCode == 200) {
+          try {
+            final data = jsonDecode(response.body);
+            debugPrint('✅ Token registered. Devices: ${data['registered_devices']}');
+          } catch (e) {
+            debugPrint('✅ Token registered but failed to parse response body: $e');
+          }
+          return;
+        } else {
+          // Log response body to help diagnose 5xx/502 responses from backend
+          String respBody = response.body;
+          debugPrint('❌ Error registering token (status ${response.statusCode}): $respBody');
+          // Retry on server errors (5xx)
+          if (response.statusCode >= 500 && attempt < maxRetries) {
+            final backoff = Duration(milliseconds: 500 * attempt);
+            await Future.delayed(backoff);
+            continue;
+          }
+          return;
+        }
+      } catch (e) {
+        debugPrint('❌ Error sending token to backend (attempt $attempt): $e');
+        if (attempt < maxRetries) {
+          await Future.delayed(Duration(milliseconds: 500 * attempt));
+          continue;
+        }
+        return;
       }
-    } catch (e) {
-      debugPrint('❌ Error sending token to backend: $e');
     }
   }
 
