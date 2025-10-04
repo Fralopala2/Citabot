@@ -52,12 +52,6 @@ class _FavoritosScreenState extends State<FavoritosScreen> {
       appBar: AppBar(
         title: const Text('Estaciones Favoritas'),
         backgroundColor: Colors.deepPurple,
-        iconTheme: const IconThemeData(color: Colors.white),
-        titleTextStyle: const TextStyle(
-          color: Colors.white,
-          fontSize: 20,
-          fontWeight: FontWeight.w500,
-        ),
       ),
       body: ListView.builder(
         itemCount: widget.estaciones.length,

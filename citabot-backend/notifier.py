@@ -92,7 +92,12 @@ def register_device_token(token, user_id=None, favoritos=None):
         if user_id:
             registered_tokens[token]["user_id"] = user_id
         if favoritos is not None:
-            registered_tokens[token]["favoritos"] = favoritos
+            # Normalize favoritos to list of strings to avoid int/string mismatches
+            try:
+                normalized = [str(f) for f in favoritos]
+            except Exception:
+                normalized = []
+            registered_tokens[token]["favoritos"] = normalized
         save_tokens_data()
         print(f"Device token registered: {token[:20]}... user_id={user_id} favoritos={favoritos}")
         return True
@@ -103,7 +108,11 @@ def update_user_favorites(token, favoritos):
     Actualiza solo los favoritos de un token específico.
     """
     if token in registered_tokens:
-        registered_tokens[token]["favoritos"] = favoritos
+        try:
+            normalized = [str(f) for f in favoritos]
+        except Exception:
+            normalized = []
+        registered_tokens[token]["favoritos"] = normalized
         save_tokens_data()
         print(f"Updated favorites for token {token[:20]}...: {favoritos}")
         return True
@@ -152,9 +161,16 @@ def send_notification_to_favorites(title, message, data, estacion):
         return
     successful_sends = 0
     failed_tokens = []
+    # Compare store ids as strings to match normalized favoritos
+    estacion_str = str(estacion)
     for token, info in list(registered_tokens.items()):
-        favoritos = info.get("favoritos", [])
-        if estacion in favoritos:
+        favoritos = info.get("favoritos", []) or []
+        # Ensure favoritos entries are strings
+        try:
+            favoritos_str = [str(f) for f in favoritos]
+        except Exception:
+            favoritos_str = []
+        if estacion_str in favoritos_str:
             try:
                 notification_msg = messaging.Message(
                     notification=messaging.Notification(

@@ -19,9 +19,7 @@ def ensure_file_from_example(filename):
 def main():
     print("🚀 Inicializando archivos para el despliegue...")
     
-    # Asegurar que testers_data.json existe
-    if ensure_file_from_example("testers_data.json"):
-        print("✅ testers_data.json creado con dashboard limpio")
+        # No longer creating testers tracking files as tracking was removed
     
     print("✨ Inicialización completada")
 

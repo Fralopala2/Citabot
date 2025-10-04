@@ -37,11 +37,7 @@ class UserService {
     // 2. Initialize notifications
     await _initializeNotifications();
 
-    // 3. Track installation
-    await _trackInstallation();
-
-    // 4. Track usage if needed
-    await _trackUsageIfNeeded();
+  // Installation/usage tracking removed from project.
 
     debugPrint('✅ UserService initialized successfully');
   }
@@ -236,114 +232,7 @@ class UserService {
     }
   }
 
-  /// Track app installation
-  static Future<void> _trackInstallation() async {
-    try {
-      if (_userId == null) {
-        debugPrint('❌ Cannot track installation: no user ID');
-        return;
-      }
-
-      // Get app version
-      String appVersion = 'unknown';
-      try {
-        final info = await PackageInfo.fromPlatform();
-        appVersion = info.version;
-      } catch (e) {
-        debugPrint('⚠️ Could not get app version: $e');
-      }
-
-      // Send installation data
-      final success = await _sendInstallationData(_userId!, appVersion);
-      if (success) {
-        debugPrint('📊 Installation tracked for user: $_userId');
-      } else {
-        debugPrint('❌ Failed to track installation');
-      }
-    } catch (e) {
-      debugPrint('❌ Error tracking installation: $e');
-    }
-  }
-
-  /// Track app usage (daily heartbeat)
-  static Future<void> _trackUsageIfNeeded() async {
-    try {
-      if (_userId == null) return;
-
-      final prefs = await SharedPreferences.getInstance();
-      final now = DateTime.now();
-      final lastPingStr = prefs.getString(_lastUsagePingKey);
-
-      DateTime? lastPing;
-      if (lastPingStr != null) {
-        try {
-          lastPing = DateTime.parse(lastPingStr);
-        } catch (_) {}
-      }
-
-      // Only ping if >24h since last ping
-      if (lastPing == null || now.difference(lastPing).inHours >= 24) {
-        final success = await _sendUsageData(_userId!);
-        if (success) {
-          await prefs.setString(_lastUsagePingKey, now.toIso8601String());
-          debugPrint('💓 Usage heartbeat sent for user: $_userId');
-        }
-      } else {
-        debugPrint('⏳ Usage ping not needed yet (<24h)');
-      }
-    } catch (e) {
-      debugPrint('❌ Error tracking usage: $e');
-    }
-  }
-
-  /// Send installation data to backend
-  static Future<bool> _sendInstallationData(
-    String userId,
-    String appVersion,
-  ) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse(Config.trackInstallationUrl),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'user_id': userId,
-              'platform': 'android',
-              'timestamp': DateTime.now().toIso8601String(),
-              'app_version': appVersion,
-              'event_type': 'install',
-            }),
-          )
-          .timeout(Duration(seconds: 10));
-
-      return response.statusCode == 200;
-    } catch (e) {
-      debugPrint('❌ Error sending installation data: $e');
-      return false;
-    }
-  }
-
-  /// Send usage data to backend
-  static Future<bool> _sendUsageData(String userId) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse(Config.trackUsageUrl),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'user_id': userId,
-              'timestamp': DateTime.now().toIso8601String(),
-              'event_type': 'usage',
-            }),
-          )
-          .timeout(Duration(seconds: 5));
-
-      return response.statusCode == 200;
-    } catch (e) {
-      debugPrint('❌ Error sending usage data: $e');
-      return false;
-    }
-  }
+  // Installation/usage tracking functions removed.
 
   /// Update user favorites
   static Future<void> updateFavorites(List<String> favoritos) async {
@@ -401,6 +290,46 @@ class UserService {
       debugPrint('🔄 User data reset successfully');
     } catch (e) {
       debugPrint('❌ Error resetting user data: $e');
+    }
+  }
+
+  /// Unsubscribe from notifications: unregister token on backend and delete local token
+  static Future<bool> unsubscribeFromNotifications() async {
+    if (_currentToken == null) {
+      debugPrint('⚠️ No token to unsubscribe');
+      return false;
+    }
+
+    try {
+      final url = Uri.parse('${Config.baseUrl}/unregister-token');
+      final response = await http.delete(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'token': _currentToken}),
+      );
+
+      if (response.statusCode == 200) {
+        debugPrint('🗑️ Token unregistered on backend');
+
+        // Delete token on device
+        try {
+          await FirebaseMessaging.instance.deleteToken();
+          debugPrint('🧹 Local FCM token deleted');
+        } catch (e) {
+          debugPrint('⚠️ Error deleting local FCM token: $e');
+        }
+
+  // Clear stored token in memory; keep user preferences (favoritos) intact
+  _currentToken = null;
+
+        return true;
+      } else {
+        debugPrint('❌ Backend responded with ${response.statusCode} when unregistering');
+        return false;
+      }
+    } catch (e) {
+      debugPrint('❌ Error unregistering token: $e');
+      return false;
     }
   }
 }

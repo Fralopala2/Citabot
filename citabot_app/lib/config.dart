@@ -15,7 +15,5 @@ class Config {
   static String get fechasUrl => '$baseUrl/itv/fechas';
   static String get registerTokenUrl => '$baseUrl/register-token';
   
-  // Installation tracking endpoints
-  static String get trackInstallationUrl => '$baseUrl/track-installation';
-  static String get trackUsageUrl => '$baseUrl/track-usage';
+  // Note: installation/usage tracking endpoints removed
 }
